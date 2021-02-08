@@ -81,13 +81,13 @@ cnt = fifoWI - fifoRI;
 
 while	( cnt >= 16 )
 	{
-	unsigned int i, j = 0, c, flag = 0;
+	unsigned int i, j = 0, c, XYflag = 0;
 	for	( i = 0; i < cnt; )
 		{
 		c = fifobuf[ (fifoRI+(i++)) & FIFOMASK ];
 		if	( ( c == 'X' ) || ( c == 'Y' ) )
-			flag = 1;
-		if	( flag )
+			XYflag = 1 + c - 'X';
+		if	( XYflag )
 			{
 			msgbuf[j++] = c;
 			if	( ( c == 10 ) || ( j >= QMSG ) )
@@ -105,17 +105,53 @@ while	( cnt >= 16 )
 		cnt = fifoWI - fifoRI;
 		if	( j == QMSG )	// si en plus il a pile la bonne longueur, on l'accepte
 			{
-			unsigned short time; double val;
+			unsigned short time;
+			short unsigned int X_period, X_lag, Y_period, Y_lag;
+			int abs_lag = -1;
+			double val;
+			char gui_msg[128];
 			msgbuf[QMSG-1] = 0;
 			if	( extract_timestamp( msgbuf, &time ) )
-				{ printf("<%s> BAD TIMESTAMP\n", msgbuf ); fflush(stdout); }
+				{ printf("]%s[ BAD TIMESTAMP\n", msgbuf ); fflush(stdout); }
 			else if	( extract_val( msgbuf, &val ) )
-				{ printf("<%s> BAD VAL\n", msgbuf ); fflush(stdout); }
+				{ printf("]%s[ BAD VAL\n", msgbuf ); fflush(stdout); }
 			else	{
-				// affichage textuel dans le GUI
-				serial_msg_call( msgbuf );
+				if	( XYflag == 1 )
+					{
+					// calcul timing : "lag" = retard du message courant par rapport au precedent de l'autre instrument
+					X_period = time - oldtimeX; X_lag = time - oldtimeY;
+					oldtimeX = time; valX = val;
+					// extraction d'un point
+					if	( X_lag < MAX_LAG )
+						{
+						abs_lag = (int)X_lag;
+						printf("lag %4d : %8.3f %8.3f\n", abs_lag, valX, valY );
+						}
+					// affichage textuel dans le GUI
+					snprintf( gui_msg, sizeof(gui_msg), "%5u %5u  %g", X_period, X_lag, val );
+					if	( X_status_call )
+						X_status_call( gui_msg );
+					}
+				else	{
+					// calcul timing
+					Y_period = time - oldtimeY; Y_lag = time - oldtimeX;
+					oldtimeY = time; valY = val;
+					// extraction d'un point
+					if	( Y_lag < MAX_LAG )
+						{
+						abs_lag = (int)Y_lag;
+						printf("lag %4d : %8.3f %8.3f\n", abs_lag, valX, valY );
+						}
+					// affichage textuel dans le GUI
+					snprintf( gui_msg, sizeof(gui_msg), "%5u %5u  %g", Y_period, Y_lag, val );
+					if	( Y_status_call )
+						Y_status_call( gui_msg );
+					}
+
 				// affichage textuel dans la console
-				printf("<%s> %04x %g\n", msgbuf, time, val ); fflush(stdout);
+				//if	( abs_lag >= 0 )
+				//	{ printf("]%s[ %d\n", msgbuf, abs_lag ); fflush(stdout); }
+				//else	{ printf("]%s[\n",    msgbuf ); fflush(stdout); }
 				}
 			}
 		}

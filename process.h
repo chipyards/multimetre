@@ -6,6 +6,7 @@
 
 #define QMSG		16
 
+#define MAX_LAG		38
 class process {
 public:
 
@@ -21,15 +22,22 @@ unsigned int fifoRI;
 // buffer pour message extrait du fifo
 char msgbuf[QMSG];
 
-// callback pour affichage textuel
-void (*serial_msg_call)( char * );
+// callbacks pour affichage status
+void (*X_status_call)( char * );
+void (*Y_status_call)( char * );
 
 // buffers pour le graphique
 float Lbuf[QBUF];
 
+// timestamp et valeur precedents
+unsigned short oldtimeX;
+unsigned short oldtimeY;
+double valX;
+double valY;
 
 // constructeur
-process() : fifoWI(0), fifoRI(0), serial_msg_call(NULL) {
+process() : fifoWI(0), fifoRI(0), X_status_call(NULL), Y_status_call(NULL),
+	    oldtimeX(0), oldtimeY(0), valX(0.0), valY(0.0) {
 	for	( int i = 0; i < QBUF; ++i )
 		Lbuf[i] = 0.0;
 	};

@@ -30,12 +30,14 @@ static glostru theglo;
 
 /** ============================ serial call back ======================= */
 
-void update_msg( char * msg )
+void update_status_X( char * msg )
 {
-if	( msg[0] == 'X' )
-	gtk_entry_set_text( GTK_ENTRY(theglo.erpX), msg );
-else if	( msg[0] == 'Y' )
-	gtk_entry_set_text( GTK_ENTRY(theglo.erpY), msg );
+gtk_entry_set_text( GTK_ENTRY(theglo.erpX), msg );
+}
+
+void update_status_Y( char * msg )
+{
+gtk_entry_set_text( GTK_ENTRY(theglo.erpY), msg );
 }
 
 /** ============================ GTK call backs ======================= */
@@ -271,7 +273,8 @@ glo->idle_profiler_cnt = 0;
 glo->running = 0;
 
 // preparer le layout
-glo->pro.serial_msg_call = update_msg;
+glo->pro.X_status_call = update_status_X;
+glo->pro.Y_status_call = update_status_Y;
 glo->pro.prep_layout( &glo->panneau );
 glo->pro.connect_layout( &glo->panneau );
 
