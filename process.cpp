@@ -31,11 +31,38 @@ using namespace std;
 //          0.4218	valeur
 //                LF	LineFeed
 
+// extraction du timestamp (rend 0 si Ok)
+static int extract_timestamp( const char * msg, unsigned short * time )
+{
+char * tail;
+*time = (unsigned short)strtol( msg+1, &tail, 16 );
+if	( tail != ( msg + 5 ) )
+	return 1;
+if	( *tail != ' ' )
+	return 2;
+return 0;
+}
+
+// extraction de la mesure (rend 0 si Ok)
+// Note : pour que cela marche il faut : setlocale( LC_ALL, "C" ); // kill the frog, AFTER gtk_init
+static int extract_val( const char * msg, double * val )
+{
+char * tail;
+if	( msg[8] == '-' )
+	*val = strtod( msg+8, &tail ); 
+else	*val = strtod( msg+9, &tail ); 
+if	( tail != ( msg + 15 ) )
+	return 1;
+if	( *tail != 0 )	// Note : le LF a ete remplace par 0 dans step()
+	return 2;
+return 0;
+}
+
 // fontion appelee periodiquement
 int process::step()
 {
 int i; unsigned int cnt;
-rxcnt = nb_serial_read( (char *)rxbuf, sizeof(rxbuf)-1 );
+rxcnt = nb_serial_read( rxbuf, sizeof(rxbuf)-1 );
 // copier les nouvelles donnees dans le FIFO
 if	( rxcnt <= 0 )
 	return 0;
@@ -78,11 +105,18 @@ while	( cnt >= 16 )
 		cnt = fifoWI - fifoRI;
 		if	( j == QMSG )	// si en plus il a pile la bonne longueur, on l'accepte
 			{
+			unsigned short time; double val;
 			msgbuf[QMSG-1] = 0;
-			// affichage textuel dans le GUI
-			serial_msg_call( (char *)msgbuf );
-			// affichage textuel dans la console
-			printf("%s\n", msgbuf); fflush(stdout);
+			if	( extract_timestamp( msgbuf, &time ) )
+				{ printf("<%s> BAD TIMESTAMP\n", msgbuf ); fflush(stdout); }
+			else if	( extract_val( msgbuf, &val ) )
+				{ printf("<%s> BAD VAL\n", msgbuf ); fflush(stdout); }
+			else	{
+				// affichage textuel dans le GUI
+				serial_msg_call( msgbuf );
+				// affichage textuel dans la console
+				printf("<%s> %04x %g\n", msgbuf, time, val ); fflush(stdout);
+				}
 			}
 		}
 	}

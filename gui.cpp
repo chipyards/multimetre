@@ -1,5 +1,5 @@
 // jluplot demo
-
+#include <locale.h>
 #include <gtk/gtk.h>
 #include <cairo-pdf.h>
 #include <stdio.h>
@@ -93,8 +93,8 @@ glo->running = 0;
 
 void cmd_call( GtkWidget *widget, glostru * glo )
 {
-const char * cmd;
-cmd = gtk_entry_get_text( GTK_ENTRY(widget) );
+// const char * cmd;
+// cmd = gtk_entry_get_text( GTK_ENTRY(widget) );
 }
 
 /** ============================ GLUPLOT call backs =============== */
@@ -102,7 +102,7 @@ cmd = gtk_entry_get_text( GTK_ENTRY(widget) );
 void clic_call_back( double M, double N, void * vglo )
 {
 // glostru * glo = (glostru *)vglo;
-printf("youtpi %g %g\n", M, N );
+// printf("youtpi %g %g\n", M, N );
 }
 
 // cette fonction devra etre transportee dans gpanel
@@ -166,6 +166,8 @@ glostru * glo = &theglo;
 GtkWidget *curwidg;
 
 gtk_init(&argc,&argv);
+
+setlocale( LC_ALL, "C" );       // kill the frog, AFTER gtk_init
 
 curwidg = gtk_window_new( GTK_WINDOW_TOPLEVEL );
 

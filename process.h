@@ -10,16 +10,16 @@ class process {
 public:
 
 // buffer pour lecture port serie
-unsigned char rxbuf[64];
+char rxbuf[64];
 int rxcnt;
 
 // fifo pour port serie
-unsigned char fifobuf[QFIFO];
+char fifobuf[QFIFO];
 unsigned int fifoWI;
 unsigned int fifoRI;
 
 // buffer pour message extrait du fifo
-unsigned char msgbuf[QMSG];
+char msgbuf[QMSG];
 
 // callback pour affichage textuel
 void (*serial_msg_call)( char * );
