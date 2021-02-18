@@ -107,7 +107,6 @@ while	( cnt >= 16 )
 			{
 			unsigned short time;
 			short unsigned int X_period, X_lag, Y_period, Y_lag;
-			int abs_lag = -1;
 			double val;
 			char gui_msg[128];
 			msgbuf[QMSG-1] = 0;
@@ -124,8 +123,7 @@ while	( cnt >= 16 )
 					// extraction d'un point
 					if	( X_lag < MAX_LAG )
 						{
-						abs_lag = (int)X_lag;
-						printf("lag %4d : %8.3f %8.3f\n", abs_lag, valX, valY );
+						set_point( (int)X_lag, valX, valY );
 						}
 					// affichage textuel dans le GUI
 					snprintf( gui_msg, sizeof(gui_msg), "%5u %5u  %g", X_period, X_lag, val );
@@ -139,8 +137,7 @@ while	( cnt >= 16 )
 					// extraction d'un point
 					if	( Y_lag < MAX_LAG )
 						{
-						abs_lag = (int)Y_lag;
-						printf("lag %4d : %8.3f %8.3f\n", abs_lag, valX, valY );
+						set_point( (int)Y_lag, valX, valY );
 						}
 					// affichage textuel dans le GUI
 					snprintf( gui_msg, sizeof(gui_msg), "%5u %5u  %g", Y_period, Y_lag, val );
@@ -162,7 +159,17 @@ return 0;
 
 // la partie du process en relation avec jluplot
 
-// layout pour les waveforms - doit etre fait apres lecture wav data et calcul spectres
+void process::set_point( int abs_lag, float Xv, float Yv )
+{
+printf("wri %4d : lag %4d : %8.3f %8.3f\n", wri, abs_lag, Xv, Yv ); fflush(stdout);
+if	( ( run ) && ( *run ) )
+	{
+	Xbuf[wri&BUFMASK] = Xv;
+	Ybuf[wri&BUFMASK] = Yv;
+	wri++;
+	}
+}
+
 void process::prep_layout( gpanel * panneau )
 {
 strip * curbande;
@@ -170,47 +177,65 @@ layer_f_circ * curcour;
 panneau->offscreen_flag = 1;	// 1 par defaut
 // marge pour les textes
 panneau->mx = 60;
-panneau->kq = 200.0;	// echelles en secondes, 200 ech/s
+panneau->kq = 2.5;	// echelles en secondes, Te = 400ms
+panneau->kq = 1.0;	// echelles en samples
 // creer le strip
 curbande = new strip;	// strip avec drawpad
 panneau->bandes.push_back( curbande );
-// creer le layer
-curcour = new layer_f_circ;	// wave a pas uniforme
-curbande->courbes.push_back( curcour );
-// parentizer a cause des fonctions "set"
-panneau->parentize();
-
 // configurer le strip
 curbande->bgcolor.dR = 1.0;
 curbande->bgcolor.dG = 0.9;
 curbande->bgcolor.dB = 0.8;
-curbande->Ylabel = "log";
+curbande->Ylabel = "Mes";
 curbande->optX = 1;
 curbande->optretX = 1;
-curbande->kr = (4096*4)/3.315;
+curbande->kr = 1.0;
+// creer un layer float circulaire (oscilloscope)
+curcour = new layer_f_circ;	// wave a pas uniforme
+curbande->courbes.push_back( curcour );
+// parentizer a cause des fonctions "set"
+panneau->parentize();
+// configurer le layer (style=0 par defaut)
+curcour->set_km( 1.0 );
+curcour->set_m0( 0.0 );
+curcour->set_kn( 1.0 );
+curcour->set_n0( 0.0 );
+curcour->label = "Xval";
+curcour->fgcolor.dR = 0.0;
+curcour->fgcolor.dG = 0.0;
+curcour->fgcolor.dB = 0.75;
+// second layer sur le meme strip
+curcour = new layer_f_circ;	// wave a pas uniforme
+curbande->courbes.push_back( curcour );
+// parentizer a cause des fonctions "set"
+panneau->parentize();
 // configurer le layer
 curcour->set_km( 1.0 );
 curcour->set_m0( 0.0 );
 curcour->set_kn( 1.0 );
 curcour->set_n0( 0.0 );
-curcour->label = "log";
+curcour->label = "Yval";
 curcour->fgcolor.dR = 0.0;
-curcour->fgcolor.dG = 0.0;
-curcour->fgcolor.dB = 0.75;
+curcour->fgcolor.dG = 0.6;
+curcour->fgcolor.dB = 0.0;
 }
 
 // connexion du layout aux data
 void process::connect_layout( gpanel * panneau )
 {
-// pointeurs locaux sur les layers
-layer_f_circ * layLOG = NULL;
+// pointeurs locaux sur les 2 layers d'oscilloscope
+layer_f_circ * lay_oscX = NULL;
+layer_f_circ * lay_oscY = NULL;
 // connecter les layers de ce layout sur les buffers existants
-layLOG = (layer_f_circ *)panneau->bandes[0]->courbes[0];
-layLOG->V = Lbuf;
-layLOG->qu = QBUF;
-// layLOG->scan();
-layLOG->Vmin = 0.0;
-layLOG->Vmax = 16384.0;	// data 14 bits
+lay_oscX = (layer_f_circ *)panneau->bandes[0]->courbes[0];
+lay_oscY = (layer_f_circ *)panneau->bandes[0]->courbes[1];
+lay_oscX->V = Xbuf;
+lay_oscY->V = Ybuf;
+lay_oscX->qu = QBUF;
+lay_oscY->qu = QBUF;
+// lay_oscX->scan();
+lay_oscX->Vmin = -10.0;
+lay_oscX->Vmax = 10.0;	// test prelim @ 10V
 printf("end connect layout, %d strips\n\n", panneau->bandes.size() ); fflush(stdout);
 }
 

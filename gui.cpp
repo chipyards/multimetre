@@ -41,19 +41,29 @@ gtk_entry_set_text( GTK_ENTRY(theglo.erpY), msg );
 }
 
 /** ============================ GTK call backs ======================= */
+
 int idle_call( glostru * glo )
 {
 glo->pro.step();	// recuperer les data du port serie
 ++glo->idle_profiler_cnt;
-	// la partie graphique
-	if	( glo->running )
-		{
-		// glo->panneau.zoomM( double(u0), double(u1) );
-		// glo->panneau.force_redraw = 1;
-		// glo->panneau.force_repaint = 1;
-		}
-	// la partie textuelle
+// la partie graphique
+unsigned int bufstep = glo->pro.bufspan / glo->panneau.ndx;	// samples par pixel
+// moderation : on n'agit que si le nombre de samples produit au moins 1 pixel de scroll
+if	( ( glo->running ) && ( ( glo->pro.wri - glo->pro.rdi ) > bufstep ) )
+	{
+	// preparer le scroll
+	int u0, u1;
+	u1 = ( glo->pro.wri - 2 ) & BUFMASK;
+	glo->pro.rdi = glo->pro.wri;
+	//u1 += QBUF;	// pour ne voir que des abcisses positives
+	u0 = u1 - glo->pro.bufspan;
+	glo->panneau.zoomM( double(u0), double(u1) );
 
+	glo->panneau.force_redraw = 1;
+	glo->panneau.force_repaint = 1;
+	}
+
+// la partie textuelle
 if	( ( glo->idle_profiler_cnt % 32 ) == 0 )
 	{
 	fflush(stdout);
@@ -107,46 +117,48 @@ void clic_call_back( double M, double N, void * vglo )
 // printf("youtpi %g %g\n", M, N );
 }
 
-// cette fonction devra etre transportee dans gpanel
-static void toggle_vis( glostru * glo, unsigned int ib, unsigned int ic )	// ignore ic pour le moment
-{
-if	( ib >= glo->panneau.bandes.size() )
-	return;
-glo->panneau.bandes[ib]->visible ^= 1;
-int ww, wh;
-ww = glo->panneau.fdx; wh = glo->panneau.fdy;	// les dimensions de la drawing area ne changent pas
-glo->panneau.resize( ww, wh );			// mais il faut recalculer la hauteur des bandes
-glo->panneau.refresh_proxies();
-glo->panneau.force_repaint = 1;
-}
-
 void key_call_back( int v, void * vglo )
 {
 glostru * glo = (glostru *)vglo;
 switch	( v )
 	{
-	case '0' : toggle_vis( (glostru *)vglo, 0, 0 ); break;
+	case '0' : glo->panneau.toggle_vis( 0, -1 ); break;
+	case 'x' : glo->panneau.toggle_vis( 0, 0 ); break;
+	case 'y' : glo->panneau.toggle_vis( 0, 1 ); break;
+	case 'Z' : if	( glo->pro.bufspan < (QBUF/2) )	// zoom horizontal
+			glo->pro.bufspan *= 2;
+		break;
+	case 'z' : if	( glo->pro.bufspan > 16 )	// zoom horizontal
+			glo->pro.bufspan /= 2;
+		break;
+	case 'V' :			// zoom vertival courbes 0 et 1 full sur partie visible (bufspan)
+		{			// N.B. le full de l'axe vertical prendrait la session entiere
+		unsigned int i, u; float v, Vmin, Vmax;
+		u = glo->panneau.bandes[0]->courbes[0]->u0;
+		Vmin = Vmax = glo->pro.Xbuf[u&BUFMASK];		// on initialise avec le premier element
+		for	( i = 0; i < glo->pro.bufspan; ++i )
+			{
+			v = glo->pro.Xbuf[(u+i)&BUFMASK];
+			if ( v < Vmin ) Vmin = v;
+			if ( v > Vmax ) Vmax = v;
+			v = glo->pro.Ybuf[(u+i)&BUFMASK];
+			if ( v < Vmin ) Vmin = v;
+			if ( v > Vmax ) Vmax = v;
+			}
+		// normalement il faudrait utiliser NdeV() mais ici N=V, alors...
+		glo->panneau.bandes[0]->zoomN( double(Vmin), double(Vmax) );
+		glo->panneau.force_redraw = 1;
+		glo->panneau.force_repaint = 1;
+		} break;
 	case 'd' :
 		{
 		glo->panneau.dump();
 		fflush(stdout);
 		} break;
-	case 'D' :
-		{
-		unsigned int c, cnt = glo->pro.fifoWI - glo->pro.fifoRI;
-		printf("\n\n----- cnt = %d\n", cnt ); fflush(stdout);
-		for	( unsigned int i = 0; i < cnt; ++i )
-			{
-			c = glo->pro.fifobuf[ (glo->pro.fifoRI+i) & FIFOMASK ];
-			if	( c == 10 )
-				printf( ";%c", c );
-			else	printf( "%c", c );
-			}
-		printf("\n-----\n"); fflush(stdout);
-		} break;
-	case 'g' :
-	case 'u' :
-	case 'v' :
+	// codes pour les multimetres 1604
+	case 'g' :	// on/off
+	case 'u' :	// connect
+	case 'v' :	// disconnect
 		{
 		char c = (char)v;
 		printf("tx '%c'\n", c ); fflush(stdout);
@@ -252,6 +264,8 @@ gtk_signal_connect( GTK_OBJECT(curwidg), "clicked",
 gtk_box_pack_start( GTK_BOX( glo->hbut ), curwidg, TRUE, TRUE, 0 );
 glo->bqui = curwidg;
 
+glo->panneau.offscreen_flag = 0;
+
 // connecter la zoombar au panel et inversement
 glo->panneau.zoombar = &glo->zbar;
 glo->panneau.zbarcall = gzoombar_zoom;
@@ -275,6 +289,7 @@ glo->running = 0;
 // preparer le layout
 glo->pro.X_status_call = update_status_X;
 glo->pro.Y_status_call = update_status_Y;
+glo->pro.run = &glo->running;
 glo->pro.prep_layout( &glo->panneau );
 glo->pro.connect_layout( &glo->panneau );
 

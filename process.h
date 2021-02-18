@@ -25,21 +25,31 @@ char msgbuf[QMSG];
 // callbacks pour affichage status
 void (*X_status_call)( char * );
 void (*Y_status_call)( char * );
+// on/off switch
+int *run;
 
 // buffers pour le graphique
-float Lbuf[QBUF];
+float Xbuf[QBUF];
+float Ybuf[QBUF];
+unsigned int wri;	// write index
+unsigned int rdi;	// read index (sert a moderer les redraws)
+unsigned int bufspan;	// largeur de fenetre en mode scroll continu (en samples)
 
+private:
 // timestamp et valeur precedents
 unsigned short oldtimeX;
 unsigned short oldtimeY;
 double valX;
 double valY;
 
+public:
 // constructeur
-process() : fifoWI(0), fifoRI(0), X_status_call(NULL), Y_status_call(NULL),
-	    oldtimeX(0), oldtimeY(0), valX(0.0), valY(0.0) {
+process() : fifoWI(0), fifoRI(0), X_status_call(NULL), Y_status_call(NULL), run(NULL),
+	    wri(0), rdi(0), bufspan(200),
+	    oldtimeX(0), oldtimeY(0), valX(0.0), valY(0.0)
+	{
 	for	( int i = 0; i < QBUF; ++i )
-		Lbuf[i] = 0.0;
+		{ Xbuf[i] = 0.0; Ybuf[i] = 0.0; }
 	};
 
 // methodes
@@ -48,5 +58,7 @@ int step();
 // la partie du process en relation avec jluplot
 void prep_layout( gpanel * panneau );
 void connect_layout( gpanel * panneau );
+private:
+void set_point( int abs_lag, float Xv, float Yv );
 };
 
