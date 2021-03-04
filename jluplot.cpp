@@ -75,9 +75,6 @@ refresh_proxies();
 double rmin = RdeN( nmin );
 double rmax = RdeN( nmax );
 tdr = autotick( rmax - rmin, qtky );
-// premier multiple de tdr superieur ou egal a vmin
-ftr = ceil( rmin / tdr );
-ftr *= tdr;
 }
 
 // zoom relatif
@@ -157,44 +154,56 @@ void strip::draw( cairo_t * cai )
 cairo_save( cai );
 // faire le fond
 cairo_set_source_rgb( cai, bgcolor.dR, bgcolor.dG, bgcolor.dB );
-cairo_rectangle( cai, 0, 0, parent->ndx, ndy );
-if   ( optcadre )
-     cairo_stroke( cai );
-else cairo_fill( cai );
-
-// preparer le clip, englobant les graduations Y car il peut leur arriver de deborder
-// mais pas celles de X car on ne veut pas que les courbes debordent dessus
-cairo_rectangle( cai, -parent->mx, 0, parent->fdx, ndy );
-cairo_clip( cai );
-
+if	( optcadre )
+	{
+	double linew = cairo_get_line_width( cai );
+	cairo_rectangle( cai, linew, linew, parent->ndx - linew * 2, ndy - linew * 2 );
+	cairo_stroke( cai );
+	}
+else	{
+	cairo_rectangle( cai, 0, 0, parent->ndx, ndy );
+	cairo_fill( cai );
+	}
 // translater l'origine Y en bas de la zone utile des courbes
 // l'origine X est deja au bord gauche de cette zone
 cairo_translate( cai, 0, ndy );
 
+// les textes de l'axe X (fond blanc inclus)
+if	( optX )
+	gradu_X( cai );
 
+// preparer le clip, englobant les graduations Y car il peut leur arriver de deborder
+// mais pas celles de X car on ne veut pas que les courbes debordent dessus
+cairo_rectangle( cai, -parent->mx, -ndy, parent->fdx, ndy );
+cairo_clip( cai );
+
+// le reticule sous les layers
+if	( optretX == 1 )
+	reticule_X( cai );
+// les textes de l'axe Y, soumis au clip (fond blanc inclus)
+gradu_Y( cai );
+// le reticule sous les layers (doit etre apres gradu_Y a cause de son fond blanc)
+if	( optretY == 1 )
+	reticule_Y( cai );
 
 // tracer les courbes
 int i;
-for ( i = ( courbes.size() - 1 ); i >= 0; i-- )
-    {
-    courbes.at(i)->ylabel = ( 20 * i ) + 20;
-    courbes.at(i)->draw( cai );
-    }
-
-// les textes de l'axe Y
-gradu_Y( cai );
-// tracer les reticules
-cairo_set_source_rgb( cai, lncolor.dR, lncolor.dG, lncolor.dB );
-reticule_Y( cai, optretY );
+for	( i = ( courbes.size() - 1 ); i >= 0; i-- )
+	{
+	if	( courbes.at(i)->visible )
+		{
+		courbes.at(i)->ylabel = ( 20 * i ) + 20;
+		courbes.at(i)->draw( cai );
+		}
+	}
 
 cairo_reset_clip( cai );
 
-// les textes de l'axe X
-if	( optX )
-	gradu_X( cai );
-// tracer les reticules
-cairo_set_source_rgb( cai, lncolor.dR, lncolor.dG, lncolor.dB );
-reticule_X( cai, optretX );
+// tracer les reticules sur les layers
+if	( optretX == 2 )
+	reticule_X( cai );
+if	( optretY == 2 )
+	reticule_Y( cai );
 
 cairo_restore( cai );
 
@@ -216,29 +225,40 @@ return 0;
 }
 
 // tracer le reticule x : la grille de barres verticales
-void strip::reticule_X( cairo_t * cai, int full )
+void strip::reticule_X( cairo_t * cai )
 {
-double curq = parent->ftq;
-double curx = parent->XdeM(parent->MdeQ(curq));		// la transformation
-while	( curx < parent->ndx )
+cairo_set_source_rgb( cai, lncolor.dR, lncolor.dG, lncolor.dB );
+double curq, curx;
+if	( subtk > 1 )
 	{
-	if	( full )
+	double subtdq = parent->tdq / subtk;
+	// chercher le premier subtick
+	curq = subtdq * ceil( parent->QdeM( parent->MdeX( 0 ) ) / subtdq );
+	cairo_save( cai );
+	cairo_set_line_width( cai, 0.5 * cairo_get_line_width( cai ) );
+	// couleur moyennee avec le fond
+	cairo_set_source_rgb( cai, 0.5*(bgcolor.dR+lncolor.dR), 0.5*(bgcolor.dG+lncolor.dG), 0.5*(bgcolor.dB+lncolor.dB) );
+	while	( ( curx = parent->XdeM(parent->MdeQ(curq)) ) < (double)parent->ndx )
 		{
 		cairo_move_to( cai, curx, -((double)ndy ) );	// top
-		cairo_line_to( cai, curx, (optX)?(3.0):(0.0) ); // bottom
+		cairo_line_to( cai, curx, 0.0 );		// bottom
+		cairo_stroke( cai );
+		curq += subtdq;
 		}
-	else if	( optX )
-		{
-		cairo_move_to( cai, curx, 0.0 );	// top
-		cairo_line_to( cai, curx, 3.0 ); 	// bottom
-		}
+	cairo_restore( cai );
+	}
+// chercher le premier tick
+curq = parent->tdq * ceil( parent->QdeM( parent->MdeX( 0 ) ) / parent->tdq );
+while	( ( curx = parent->XdeM(parent->MdeQ(curq)) ) < parent->ndx )
+	{
+	cairo_move_to( cai, curx, -((double)ndy ) );	// top
+	cairo_line_to( cai, curx, 0.0 );		// bottom
 	cairo_stroke( cai );
 	curq += parent->tdq;
-	curx = parent->XdeM(parent->MdeQ(curq));	// la transformation
 	}
 }
 
-// les textes de l'axe X
+// les textes de l'axe X avec les taquets
 void strip::gradu_X( cairo_t * cai )
 {
 char lbuf[32];
@@ -246,7 +266,7 @@ cairo_set_source_rgb( cai, 1, 1, 1 );
 cairo_rectangle( cai, -parent->mx, 0, parent->fdx, fdy - ndy );
 cairo_fill( cai );
 cairo_set_source_rgb( cai, 0, 0, 0 );
-double curq = parent->ftq;
+double curq = parent->tdq * ceil( parent->QdeM( parent->MdeX( 0 ) ) / parent->tdq );
 double curx = parent->XdeM(parent->MdeQ(curq));		// la transformation
 // preparation format selon premier point
 scientout( lbuf, curq, parent->tdq );
@@ -255,29 +275,49 @@ while	( curx < parent->ndx )
 	scientout( lbuf, curq );
 	cairo_move_to( cai, curx - 20, 15 );
 	cairo_show_text( cai, lbuf );
+	cairo_move_to( cai, curx, 0.0 );	// top
+	cairo_line_to( cai, curx, 3.0 ); 	// bottom
+	cairo_stroke( cai );
 	curq += parent->tdq;
 	curx = parent->XdeM(parent->MdeQ(curq));	// la transformation
 	}
 }
 
 // tracer le reticule y : la grille de barres horizontales
-void strip::reticule_Y( cairo_t * cai, int full )
+void strip::reticule_Y( cairo_t * cai )
 {
-double curr = ftr;
-double cury = -YdeN(NdeR(curr));		// la transformation
-while	( cury > -((double)ndy ) )		// le haut (<0)
+cairo_set_source_rgb( cai, lncolor.dR, lncolor.dG, lncolor.dB );
+double curr, cury;
+if	( subtk > 1 )
 	{
-	cairo_move_to( cai, -6, cury );	// le -6 c'est pour les graduations aupres des textes
-	if	( full )
+	double subtdr = tdr / subtk;
+	// chercher le premier subtick
+	curr = subtdr * ceil( RdeN( NdeY( 0 ) ) / subtdr );
+	cairo_save( cai );
+	cairo_set_line_width( cai, 0.5 * cairo_get_line_width( cai ) );
+	// couleur moyennee avec le fond
+	cairo_set_source_rgb( cai, 0.5*(bgcolor.dR+lncolor.dR), 0.5*(bgcolor.dG+lncolor.dG), 0.5*(bgcolor.dB+lncolor.dB) );
+	while	( ( cury = -YdeN(NdeR(curr)) ) > -((double)ndy ) )		// le haut (<0)
+		{
+		cairo_move_to( cai, 0, cury );
 		cairo_line_to( cai, parent->ndx, cury );
-	else	cairo_line_to( cai, 0, cury );
+		cairo_stroke( cai );
+		curr += subtdr;
+		}
+	cairo_restore( cai );
+	}
+// chercher le premier tick
+curr = tdr * ceil( RdeN( NdeY( 0 ) ) / tdr );
+while	( ( cury = -YdeN(NdeR(curr)) ) > -((double)ndy ) )		// le haut (<0)
+	{
+	cairo_move_to( cai, 0, cury );
+	cairo_line_to( cai, parent->ndx, cury );
 	cairo_stroke( cai );
 	curr += tdr;
-	cury = -YdeN(NdeR(curr));		// la transformation
 	}
 }
 
-// les textes de l'axe Y
+// les textes de l'axe Y avec les taquets
 void strip::gradu_Y( cairo_t * cai )
 {
 char lbuf[32]; int mx;
@@ -286,7 +326,7 @@ cairo_set_source_rgb( cai, 1, 1, 1 );
 cairo_rectangle( cai, -mx, -ndy, mx, ndy );
 cairo_fill( cai );
 cairo_set_source_rgb( cai, 0, 0, 0 );
-double curr = ftr;
+double curr = tdr * ceil( RdeN( NdeY( 0 ) ) / tdr );	// chercher le premier tick
 double cury = -YdeN(NdeR(curr));		// la transformation
 // preparation format selon premier point
 scientout( lbuf, curr, tdr );
@@ -295,6 +335,9 @@ while	( cury > ( -((double)ndy) + 19.0 ) )		// petite marge pour label axe
 	scientout( lbuf, curr );
 	cairo_move_to( cai, -mx + 10.0, cury + 5 );
 	cairo_show_text( cai, lbuf );
+	cairo_move_to( cai, -6, cury );	// le -6 c'est pour les graduations aupres des textes
+	cairo_line_to( cai, 0, cury );
+	cairo_stroke( cai );
 	curr += tdr;
 	cury = -YdeN(NdeR(curr));		// la transformation
 	}
@@ -344,9 +387,6 @@ refresh_proxies();
 double qmin = QdeM( mmin );
 double qmax = QdeM( mmax );
 tdq = autotick( qmax - qmin, qtkx );
-// premier multiple de tdq superieur ou egal a qmin
-ftq = ceil( qmin / tdq );
-ftq *= tdq;
 // quatrieme etape : mise a jour scrollbar si elle existe
 if	( zbarcall )
 	zbarcall( zoombar, ( mmin - fullmmin ) / ( fullmmax - fullmmin ),
@@ -409,6 +449,11 @@ if	( bandes.size() )
 			ndy -= ((bandes.at(ib)->optX)?(my):(0));
 			}
 		}
+	if	( cnt == 0 )
+		{
+		// printf("panel::presize : 0 bande visible\n" );
+		return;
+		}
  	// bandes d'egale hauteur
 	bndy = ndy / cnt;
 	// reste de la division applique a la premiere bande
@@ -452,7 +497,12 @@ if	( bandes.size() )
 			ndy -= ((bandes.at(ib)->optX)?(my):(0));
 			}
 		}
- 	// bandes d'egale hauteur
+	if	( cnt == 0 )
+		{
+		// printf("panel::resize : 0 bande visible\n" );
+		return;
+		}
+	// bandes d'egale hauteur
 	bndy = ndy / cnt;
 	// reste de la division applique a la premiere bande
 	bandes.at(0)->resize( bndy + ( ndy % cnt ) );
@@ -515,18 +565,29 @@ for ( i = 0; i < bandes.size(); i++ )
 cairo_restore( cai );
 }
 
-// cadrage auto si dvtot <= 0.0, sinon "centerY"
 // rend 0 si Ok
 int panel::pdfplot( const char * fnam, const char * caption )
 {
 cairo_surface_t * cursurf;
 cairo_status_t cairo_status;
 cairo_t * lecair;
-double pdf_w, pdf_h;
+unsigned int saved_fdx, saved_fdy, saved_optcadre[bandes.size()];
+jcolor saved_bgcolor[bandes.size()];
 
-// format A4 landscape
-pdf_w = ( 297.0 / 25.4 ) * 72;
-pdf_h = ( 210.0 / 25.4 ) * 72;
+double pdf_w, pdf_h, pdf_margin;
+
+// format A4 landscape, en "dots"
+pdf_w = ( 297.0 / 25.4 ) * pdf_DPI;
+pdf_h = ( 210.0 / 25.4 ) * pdf_DPI;
+pdf_margin = ( 9.0 / 25.4 ) * pdf_DPI;
+
+// save draw context
+saved_fdx = fdx; saved_fdy = fdy;
+for	( unsigned int iban = 0; iban < bandes.size(); iban++ )
+	{
+	saved_optcadre[iban] = bandes[iban]->optcadre;
+	saved_bgcolor[iban] = bandes[iban]->bgcolor;
+	}
 
 cursurf = cairo_pdf_surface_create( fnam, pdf_w, pdf_h );
 
@@ -537,24 +598,41 @@ if   ( cairo_status != CAIRO_STATUS_SUCCESS )
 lecair = cairo_create( cursurf );
 
 // un peu de marge (en points)
-cairo_translate( lecair, 24.0, 24.0 );
+cairo_translate( lecair, pdf_margin, pdf_margin );
 
-resize( (int)pdf_w - 48, (int)pdf_h - 72 );
+// set PDF draw context
+resize( (int)pdf_w - ( 2 * pdf_margin ), (int)pdf_h - ( 3 * pdf_margin ) );
+for	( unsigned int iban = 0; iban < bandes.size(); iban++ )
+	{
+	bandes[iban]->optcadre = 1;
+	if	( bandes[iban]->subtk > 1 )
+		bandes[iban]->bgcolor.set( 1.0, 1.0, 1.0 );
+	else	bandes[iban]->bgcolor.set( 0.0, 0.0, 0.0 );
+	}
 
-// preparer font a l'avance
-cairo_select_font_face( lecair, "monospace", CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_NORMAL);
-cairo_set_font_size( lecair, 12.0 );
+// preparer font (attention aux pb de compatiblite PDF... 'monospace' ==> bug sporadique)
+cairo_select_font_face( lecair, "Courier", CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_NORMAL);
+cairo_set_font_size( lecair, 12.0 );	// en dots
 cairo_set_line_width( lecair, 0.5 );
 
 // draw the curves
 draw( lecair );
 
 // the caption
-cairo_move_to( lecair, 10.0, pdf_h - 72.0 + 24 );
+cairo_move_to( lecair, 10.0, pdf_h - ( 2 * pdf_margin ) );
 cairo_show_text( lecair, caption );
 
 cairo_destroy( lecair );
 cairo_surface_destroy( cursurf );
+
+// restore draw context
+resize( saved_fdx, saved_fdy );
+for	( unsigned int iban = 0; iban < bandes.size(); iban++ )
+	{
+	bandes[iban]->optcadre = saved_optcadre[iban];
+	bandes[iban]->bgcolor = saved_bgcolor[iban];
+	}
+
 return 0;
 }
 
@@ -640,49 +718,142 @@ if ( i ) --i;
 return( tickbase * coef[i] );
 }
 
-// conversion double-->texte, avec un format de precision
-// en rapport avec la valeur du tick.
-// si la valeur du tick est nulle ou absente, utilisation
-// du format anterieur memorise
-// retour = nombre de chars utiles
-// lbuf doit pouvoir contenir 32 bytes
+// conversion double-->texte, avec un format de precision lie a la valeur du tick.
+// si la valeur du tick est <= 0.0 ou absente, utilisation du format anterieur memorise
+// par rapport au %g, il y a 3 differences :
+//	- le format est choisi en fonction du tick, pas seulement de la valeur elle-meme,
+//	  de maniere a pouvoir toujours differencier un ecart d'un tick
+//	- la memorisation du format assure un format homogene sur une echelle
+//	- les exposants "eN" sont remplaces par les suffixes "fpnum kMGT"
+// la valeur est supposee etre multiple du tick (i.e. elle sera souvent arrondie au tick)
+//	- retour = nombre de chars utiles
+//	- lbuf doit pouvoir contenir 32 bytes
+//
+#define ANTI_MK		// option moderant l'usage des sufixes m et k
 int scientout( char * lbuf, double val, double tick )
 {
 //                          0123456789
-static const char *osuff = "fpnum kMGT";
-// ces deux valeurs memorisent le format
-static int triexp = 0;	// exposant, multiple de 3
-static int preci = 1;	// nombre digits apres dot
-if ( tick > 0.0 )	// preparation format
-   {
-   int tikexp; double aval;
-   // normalisation
-   aval = fabs(val);
-   if ( aval < tick )	// couvre le cas val == 0.0
-      aval = tick;
-   triexp = (int)floor( log10( aval ) / 3 );
-   triexp *= 3;
-   // ordre de grandeur du tick (en evitant arrondi du 1 vers 0.99999)
-   tikexp = (int)floor( log10(tick) + 1e-12 );
-   preci = triexp - tikexp;
-   if ( preci < 0 ) preci = 0;
-   // printf("~>%d <%d> .%d\n", triexp, tikexp, preci );
-   }
-if ( val == 0.0 )
-   { sprintf( lbuf, "0" ); return 1; }
-unsigned int cnt;	// affichage selon format
-if ( triexp )
-   val *= exp( -triexp * log(10) );
-// int snprintf (char *s, size t size, const char *template, . . . )
-// rend le nombre de chars utiles
-cnt = snprintf( lbuf, 20, "%.*f", preci, val );
-if ( triexp == 0 )
-   return cnt;
-if ( ( triexp < -15 ) || ( triexp > 12 ) )
-   {
-   cnt += snprintf( lbuf + cnt, 8, "e%d", triexp );
-   return cnt;
-   }
-sprintf( lbuf + cnt, "%c", osuff[ ( triexp/3 ) + 5 ] );
+static const char *osuff = "fpnum kMGT";		// de femto a Tera
+static const double opow[] = {
+	1e-15, 1e-14, 1e-13, 1e-12, 1e-11, 1e-10,
+	1e-9, 1e-8, 1e-7, 1e-6, 1e-5, 1e-4, 1e-3, 1e-2,
+	0.1, 1, 10, 100, 1000,
+	1e4, 1e5, 1e6, 1e7, 1e8, 1e9, 1e10, 1e11, 1e12, 1e13, 1e14, 1e15 };
+
+int v_exp;		// ordre de grandeur de la valeur, arrondi par defaut
+static int v_exp3 = 0;	// ordre de grandeur de la valeur, arrondi par defaut au multiple de 3
+int t_exp; 		// ordre de grandeur du tick, arrondi par defaut
+static int qfrac = 1;	// resolution de la partie fractionnaire (nombre digits apres dot)
+
+	/// ----------------------- preparation format --------------------------------------------
+if	( tick > 0.0 )
+	{
+	double aval;
+	// normalisation
+	aval = fabs(val);
+	if ( aval < ( 5.0 * tick ) )	// couvre le cas val == 0.0
+	   aval = ( 5.0 * tick );	// et les valeurs autour de 0 peu representatives
+	// ordre de grandeur de la valeur
+	aval = log10( aval );
+	v_exp  = (int)floor( aval );
+	v_exp3 = (int)floor( aval / 3 );
+	v_exp3 *= 3;	// exemple : -3 de 0.001 a 0.999, 0 de 1 a 999; 3 de 1000 a 9999
+	// ordre de grandeur du tick (en evitant arrondi du 1 vers 0.99999)
+	t_exp = (int)floor( log10(tick) + 1e-12 );
+	// estimation de la resolution necessaire
+	qfrac = v_exp3 - t_exp;
+	if ( qfrac < 0 ) qfrac = 0;
+	// printf("\nv_exp = %d   v_exp3 = %d    t-exp = %d --> qfrac = %d\n", v_exp, v_exp3, t_exp, qfrac );
+	#ifdef ANTI_MK
+	switch	( v_exp )
+		{
+		case -1 : v_exp3 = 0;
+			break;
+		case 3: v_exp3 = 0;
+			break;
+		case 4:
+		case 5: if ( qfrac > 0 ) v_exp3 = 0;
+			break;
+		}
+	qfrac = v_exp3 - t_exp;
+	if ( qfrac < 0 ) qfrac = 0;
+	// printf("v_exp = %d   v_exp3 = %d    t-exp = %d --> qfrac = %d\n", v_exp, v_exp3, t_exp, qfrac );
+	#endif
+	}
+	/// ----------------------- formatage -----------------------------------------------------
+int cnt;
+// premier cas trivial
+if	( val == 0.0 )
+	{ sprintf( lbuf, "0" ); return 1; }
+// cas extremes : suffixes non disponibles
+if	( ( v_exp3 < -15 ) || ( v_exp3 > 12 ) )
+	{
+	cnt = snprintf( lbuf, 30, "%g", val );
+	return cnt;
+	}
+// application de l'exposant
+if	( v_exp3 )
+	{
+	// val *= exp( -v_exp3 * log(10) );
+	val *= opow[15 - v_exp3];
+	}
+// formatage en virgule fixe
+cnt = snprintf( lbuf, 30, "%.*f", qfrac, val );
+if	( cnt < 0 )	// debordement ?
+	cnt = snprintf( lbuf, 30, "%g", val );
+// second cas trivial : pas besoin de suffixe
+if	( v_exp3 == 0 )
+	return cnt;
+// ajouter suffixe
+sprintf( lbuf + cnt, "%c", osuff[ ( v_exp3/3 ) + 5 ] );
 return( cnt + 1 );
 }
+
+/*
+void scientout_test1( double val, double tick=0.0 )
+{
+char tbuf[32]; int cnt;
+cnt = scientout( tbuf, val, tick );
+printf("%10g, %10g, --> %2d : %s\n", val, tick, cnt, tbuf );
+}
+
+void scientout_tests()
+{
+// test v_exp3
+scientout_test1( 100, 0.01 );
+scientout_test1( 999.9, 0.01 );
+scientout_test1( 1000, 0.01 );
+scientout_test1( 0.001, 0.0001 );
+scientout_test1( 0.999, 0.0001 );
+
+scientout_test1( 1.1, 0.01 ); scientout_test1( 1.2 ); scientout_test1( 1.25 ); scientout_test1( 0 );
+scientout_test1( 11.123, 0.02 ); scientout_test1( 13 ); scientout_test1( 25.01 ); scientout_test1( 0 );
+scientout_test1( 500, 2 ); scientout_test1( 1200 ); scientout_test1( 12000 ); scientout_test1( 0 );
+scientout_test1( -500, 2 ); scientout_test1( -1200 ); scientout_test1( -12000 ); scientout_test1( 0 );
+scientout_test1( 0.1, 0.001 ); scientout_test1( -0.1 ); scientout_test1( -0.2 ); scientout_test1( 0 );
+
+// test ANTI_MK (k)
+scientout_test1( 1000, 1 ); scientout_test1( 11000 ); scientout_test1( -200 ); scientout_test1( 0 );
+scientout_test1( 10000, 10 ); scientout_test1( 11000 ); scientout_test1( -200 ); scientout_test1( 0 );
+scientout_test1( 10000, 1000 ); scientout_test1( 11000 ); scientout_test1( -200000 ); scientout_test1( 0 );
+scientout_test1( 100000, 1 ); scientout_test1( 11001 ); scientout_test1( -99999 ); scientout_test1( 0 );
+scientout_test1( 100000, 1000 ); scientout_test1( 11000 ); scientout_test1( -200000 ); scientout_test1( 0 );
+// test ANTI_MK (m)
+scientout_test1( 0.5, 0.001 ); scientout_test1( 1 ); scientout_test1( -2 ); scientout_test1( 0 );
+scientout_test1( 0.0, 0.005 ); scientout_test1( 1 ); scientout_test1( -2 ); scientout_test1( 0 );
+scientout_test1( 0.0, 0.01 ); scientout_test1( 1 ); scientout_test1( -2 ); scientout_test1( 0 );
+scientout_test1( 0.0, 0.02 ); scientout_test1( 1 ); scientout_test1( -2 ); scientout_test1( 0 );
+scientout_test1( 3, 0.001 ); scientout_test1( 1 ); scientout_test1( -2 ); scientout_test1( 0 );
+
+// cas extremes
+scientout_test1( -120e-15 , 5e-15 ); scientout_test1( 10e-15 ); scientout_test1( 33e-15 ); scientout_test1( 0 );
+scientout_test1( -120e-19 , 5e-19 ); scientout_test1( 10e-18 ); scientout_test1( 33e-19 ); scientout_test1( 0 );
+scientout_test1( 33e15, 2e15 ); scientout_test1( -1e15 ); scientout_test1( 200e15 ); scientout_test1( 0 );
+scientout_test1( 33e12, 2e12 ); scientout_test1( -1e12 ); scientout_test1( 200e12 ); scientout_test1( 0 );
+scientout_test1( 200000000 , 5e-15 ); scientout_test1( 100000 ); scientout_test1( 1e15 ); scientout_test1( 0 );
+//
+// scientout_test1(  ); scientout_test1(  ); scientout_test1(  ); scientout_test1( 0 );
+}
+*/
+
+

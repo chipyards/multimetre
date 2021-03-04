@@ -60,6 +60,21 @@
    N.B. ?? window resize et zoom relatif ne marchent que s'il y a eu au moins 1 zoom absolu !
    ATTENTION PIEGE CAIRO : l'espace XY de Cairo est l'espace XY de JLUPLOT au signe de Y pres !!!
    ==> dans le draw() des layers, le signe de Y est change systematiquement avant d'etre passe a Cairo
+
+3) Full Zooms
+	- jluplot s'appuie entierement sur les methodes get_Umin(), get_Umax(), get_Vmin(), get_Vmax()
+	  que tout layer doit implementer (obligatoire).
+	- en general les valeurs par defaut de min et max sont codees en dur dans chaque layer derive,
+	  et appliquees par le constructeur du layer
+	- chaque layer derive peut implementer une methode scan() pour mettre a jour ses min et max,
+	  a charge pour l'application de l'appeler quand les data sont mises a jour
+
+4) PDF plot
+	- la methode pdfplot( fnam, caption ) modifie le contexte :
+		- pour les elements fixes en pixels : pdf_DPI = 72 ==> 1 pixel -> 1 pt ( 0.353 mm )
+		- format A4 landscape (@ pdf_DPI = 72), indep. de la taille de fenetre
+		- fond transparent (optcadre = 1)
+	  elle restitue le contexte au retour.
 */
 class panel;
 class strip;
@@ -135,7 +150,7 @@ virtual double get_Vmax() = 0;
 virtual void draw( cairo_t * cai ) = 0;	// dessin
 // dump
 virtual void dump() {
-  printf("      layer %s\n", label.c_str() );
+  printf("      layer %s, %s\n", label.c_str(), (visible?"visible":"invisible") );
   printf("\tm0=%-12.5g km=%-12.5g n0=%-12.5g kn=%-12.5g\n", m0, km, n0, kn );
   printf("\tu0=%-12.5g ku=%-12.5g v0=%-12.5g kv=%-12.5g\n", u0, ku, v0, kv );
   };
@@ -155,9 +170,8 @@ double r0;		// offset vertical graduations, valeur associee a n=0
 double kr;		// coeff vertical graduations --> user
 
 double tdr;		// intervalle ticks Y dans l'espace graduations R
-double ftr;		// le premier tick Y dans l'espace graduations R
-			// = premier multiple de tdr superieur ou egal a n2r(v2n(v0))
 unsigned int qtky;	// nombre de ticks
+unsigned int subtk;	// nombre de subticks par tick
 jcolor bgcolor;		// couleur du fond ou du cadre (selon optcadre)
 jcolor lncolor;		// couleur du reticule
 int force_redraw;	// demande mise a jour du trace vectoriel
@@ -165,14 +179,14 @@ vector < layer_base * > courbes;
 unsigned int fdy;	// full_dy = hauteur totale du strip (pixels)
 unsigned int ndy;	// net_dy  = hauteur occupee par la courbe (pixels) = fdy - hauteur graduations
 int optX;		// option pour l'axe X : 0 <==> ne pas mettre les graduations
-int optretX;		// option pour reticule X : 0 <==> ticks dans la marge, 1 <==> lignes sur toute la hauteur
-int optretY;		// option pour reticule Y : 0 <==> ticks dans la marge, 1 <==> lignes sur toute la largeur
-int optcadre;		// option cadre : 0 <==> fill, 1 <==> traits
+int optretX;		// option pour reticule X : 0 ==> rien, 1 ==> lignes sous le layer, 2 ==> lignes sur le layer  
+int optretY;		// option pour reticule Y : idem
+int optcadre;		// option cadre : 0 ==> fill, 1 ==> fond transparent, cadre au trait
 int visible;
 string Ylabel;
 // constructeur
 strip() : parent(NULL), y0(0.0), ky(1.0), kmfn(0.05), r0(0.0), kr(1.0),
-	  tdr(10.0), ftr(1.0), qtky(11), bgcolor( 1.0 ), lncolor( 0.5 ),
+	  tdr(10.0), qtky(11), subtk(1), bgcolor( 1.0 ), lncolor( 0.5 ),
 	  force_redraw(1), fdy(100), ndy(100), optX(0), optretX(1), optretY(1), optcadre(0), visible(1) {};
 // methodes
 double NdeY( double y ) { return( ( y - y0 ) * ky );  };
@@ -186,14 +200,15 @@ void set_ky( double kY );
 double get_y0() { return y0; };
 double get_ky() { return ky; };
 
-void parentize() {
-  for ( unsigned int i = 0; i < courbes.size(); i++ )
-      courbes.at(i)->parent = this;
-  };
+void add_layer( layer_base * lacourbe ) {
+lacourbe->parent = this;
+courbes.push_back( lacourbe );
+}
+
 // dump
 void dump() {
 unsigned int i;
-printf("   strip fdy=%d, %d layers\n", fdy, courbes.size() );
+printf("   strip fdy=%d, %s, %d layers\n", fdy, (visible?"visible":"invisible"), courbes.size() );
 printf("\ty0=%-12.5g ky=%-12.5g r0=%-12.5g kr=%-12.5g\n", y0, ky, r0, kr );
 for ( i = 0; i < courbes.size(); i++ )
     courbes.at(i)->dump();
@@ -211,10 +226,10 @@ void resize( int rendy );	// met a jour la hauteur puis le zoom
 virtual void draw( cairo_t * cai );
 // event
 int clicY( double y, double * py );
-void reticule_X( cairo_t * cai, int full );	// tracer le reticule x : la grille de barres verticales
-void gradu_X( cairo_t * cai );			// les textes de l'axe X
-void reticule_Y( cairo_t * cai, int full );	// tracer le reticule y : la grille de barres horizontales
-void gradu_Y( cairo_t * cai );			// les textes de l'axe Y
+void reticule_X( cairo_t * cai );	// tracer le reticule x : la grille de barres verticales
+void gradu_X( cairo_t * cai );		// les textes de l'axe X
+void reticule_Y( cairo_t * cai );	// tracer le reticule y : la grille de barres horizontales
+void gradu_Y( cairo_t * cai );		// les textes de l'axe Y
 };
 
 
@@ -233,8 +248,6 @@ double q0;		// offset horizontal graduations, valeur associee a m=0
 double kq;		// coeff horizontal graduations --> user
 
 double tdq;		// intervalle ticks X dans l'espace graduations QR
-double ftq;		// le premier tick X dans l'espace graduations QR
-			// = premier multiple de tdq superieur ou egal a m2q(u2m(u0))
 unsigned int qtkx;	// nombre de ticks
 int full_valid;		// indique que les coeffs de transformations sont dans un etat coherent
 int force_redraw;	// demande mise a jour du trace vectoriel
@@ -249,14 +262,16 @@ unsigned int ndx;	// net_dx  = largeur nette des graphes (pixels) mx deduit
 unsigned int mx;	// marge x pour les textes a gauche (pixels)
 			// sert a translater le repere pour trace des courbes
 unsigned int my;	// marge pour les textes de l'axe X (pixels)
+unsigned int pdf_DPI;	// conversion des pixels t.q. pdf_DPI = 72 <==> 1 pix = 1 point
+
 // zoombar X optionnelle
 void * zoombar;		// pointeur sur l'objet, a passer a la callback
 void(* zbarcall)(void*, double, double); 	// callback de zoom normalise
 
 // constructeur
 panel() : x0(0.0), kx(1.0), q0(0.0), kq(1.0),
-	  tdq(10.0), ftq(1.0), qtkx(11), full_valid(0), force_redraw(1),
-	  fdx(200), fdy(200), mx(80), my(20),
+	  tdq(10.0), qtkx(11), full_valid(0), force_redraw(1),
+	  fdx(200), fdy(200), mx(60), my(20), pdf_DPI(72),
 	  zbarcall(NULL)
 	  { ndx = fdx - mx; };
 // methodes
@@ -271,13 +286,11 @@ void set_kx( double kX );
 double get_x0() { return x0; };
 double get_kx() { return kx; };
 
-void parentize() {
-  for ( unsigned int i = 0; i < bandes.size(); i++ )
-      {
-      bandes.at(i)->parent = this;
-      bandes.at(i)->parentize();
-      }
-  };
+void add_strip( strip * labande ) {
+labande->parent = this;
+bandes.push_back( labande );
+}
+
 // dessin
 void zoomM( double mmin, double mmax );	// zoom absolu
 void zoomX( double xmin, double xmax );	// zoom relatif
@@ -301,7 +314,7 @@ void dump() {
   printf("panel fdx=%d fdy=%d, %d strips\n", fdx, fdy, bandes.size() );
   printf("\tx0=%-12.5g kx=%-12.5g q0=%-12.5g kq=%-12.5g\n", x0, kx, q0, kq );
   for	( i = 0; i < bandes.size(); i++ )
-	if (bandes.at(i)->visible) bandes.at(i)->dump();
+	bandes.at(i)->dump();
   };
 };
 

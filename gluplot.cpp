@@ -1,17 +1,14 @@
 #include <gtk/gtk.h>
 #include <gdk/gdkkeysyms.h>
-// #include <cairo-pdf.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <math.h>
-// #include "modpop.h"
 
 using namespace std;
 #include <string>
 #include <vector>
 
 #include "jluplot.h"
-#include "layers.h"
 #include "gluplot.h"
 
 /** ======================= C-style callbacks ================================ */
@@ -78,24 +75,22 @@ static void gpanel_pdf_ok_button( GtkWidget *widget, gpanel * p )
 p->pdf_ok_call();
 }
 
-static void menu1_full( GtkWidget *widget, gpanel * p )
+static void smenu_full( GtkWidget *widget, gpanel * p )
 {
 // printf("Full clic %08x\n", p->selected_strip );
 if	( p->selected_strip & ( CLIC_MARGE_INF | CLIC_ZOOMBAR ) )
 	{
 	p->fullM();
 	p->force_repaint = 1;
-	// gtk_widget_queue_draw( p->widget );
 	}
 else if ( p->selected_strip & CLIC_MARGE_GAUCHE )
 	{
 	p->bandes.at(p->selected_strip & (~CLIC_MARGE))->fullN();
 	p->force_repaint = 1;
-	// gtk_widget_queue_draw( p->widget );
 	}
 }
 
-static void menu1_zoomin( GtkWidget *widget, gpanel * p )
+static void smenu_zoomin( GtkWidget *widget, gpanel * p )
 {
 if	( p->selected_strip & ( CLIC_MARGE_INF | CLIC_ZOOMBAR ) )
 	{
@@ -107,10 +102,9 @@ else if ( p->selected_strip & CLIC_MARGE_GAUCHE )
 	b->zoomYbyK( 0.5 );
 	}
 p->force_repaint = 1;
-// gtk_widget_queue_draw( p->widget );
 }
 
-static void menu1_zoomout( GtkWidget *widget, gpanel * p )
+static void smenu_zoomout( GtkWidget *widget, gpanel * p )
 {
 if	( p->selected_strip & ( CLIC_MARGE_INF | CLIC_ZOOMBAR ) )
 	{
@@ -122,7 +116,6 @@ else if ( p->selected_strip & CLIC_MARGE_GAUCHE )
 	b->zoomYbyK( 2.0 );
 	}
 p->force_repaint = 1;
-// gtk_widget_queue_draw( p->widget );
 }
 
 static gboolean gzoombar_click( GtkWidget * widget, GdkEventButton * event, gzoombar * z )
@@ -197,7 +190,7 @@ gtk_widget_set_events ( widget, gtk_widget_get_events(widget)
 drag.mode = nil;
 selected_key = 0;
 
-menu1_x = mkmenu1("X AXIS");
+smenu_x = mksmenu("X AXIS");
 // on desactive ici le double buffer pour le controler plus finement
 // avec gdk_window_begin_paint_region() et gdk_window_end_paint()
 gtk_widget_set_double_buffered( widget, FALSE );
@@ -349,14 +342,10 @@ if	( ( force_redraw ) || ( strip_redraws ) )
 	}
 }
 
-// cette methode automatique met a jour la "drawing area" dite "ecran" (une zone du frame buffer en fait)
-//	- si c'est suffisant elle va seulement mettre a jour le play cursor directement sur l'ecran
-//	  en copiant une minuscule zone de drawpad pour effacer l'ancien curseur
-//	- si c'est demande par force_repaint ou par une activite de drag elle va d'abord mettre a jour
-//	  le panel entier sur l'ecran en copiant le drawpad.
-//	  le drawpad aura eventuellement ete regenere par la methode draw()
-//	- s'il y a drag en cours elle va dessiner par dessus tout un motif fantome
-// l'action curseur est effectuee en single buffer si elle est seule
+// Cette methode automatique met a jour la "drawing area" dite "ecran" (une zone du frame buffer en fait)
+// Elle est destinee a etre appelee periodiquement (typiquement 30 fois par seconde)
+// Elle est econome, s'il n'y a rien a faire elle ne fait rien
+// (detail sur gluplot.h)
 void gpanel::paint()
 {
 // special profileur
@@ -368,7 +357,10 @@ if	( drag.mode != nil )
 
 if	( force_repaint )
 	{
-	// entrer en mode double-buffer
+	// entrer explicitement en mode double-buffer, car le fonctionnement implicite
+	// a ete desactive dans gpanel::layout() :
+	//	gtk_widget_set_double_buffered( widget, FALSE );
+	//
 	gdk_window_begin_paint_region( widget->window, laregion );
 	cair = gdk_cairo_create( widget->window );
 	cairo_set_line_width( cair, 0.5 );
@@ -376,7 +368,7 @@ if	( force_repaint )
 	// paint the panel
 	if	( offscreen_flag == 0 )
 		{
-		printf("gpanel fallback to panel::draw\n");
+		// printf("gpanel fallback to panel::draw\n");
 		// fill the background (RED just for test)
 		// cairo_set_source_rgb( cair, 1, 0, 0 );
 		// cairo_paint(cair);	// paint the complete clip area
@@ -434,20 +426,20 @@ if	( force_repaint )
 void gpanel::expose()
 {
 force_repaint = 1;
-paint();
+// paint();
 }
 
 void gpanel::configure()
 {
 int ww, wh;
 gdk_drawable_get_size( widget->window, &ww, &wh );
-// printf("gpanel configuzed %d x %d\n", ww, wh );
+// printf("gpanel configuzed %d x %d\n", ww, wh ); fflush(stdout);
 resize( ww, wh );
 // mettre a jour la region qui sert pour begin_paint
 if	( laregion )
 	gdk_region_destroy( laregion );
 laregion = gdk_drawable_get_clip_region( widget->window );
-force_repaint = 1; fflush(stdout);
+force_repaint = 1;
 }
 
 void gpanel::toggle_vis( unsigned int ib, int ic )
@@ -489,7 +481,6 @@ if	( event->type == GDK_KEY_PRESS )
 			if	( selected_key == 'f' )
 				{
 				fullMN(); force_repaint = 1;
-				// gtk_widget_queue_draw( widget );
 				}
 			// autres, transmises a l'appli
 			else	{
@@ -569,13 +560,13 @@ else if	( event->type == GDK_BUTTON_RELEASE )
 				{
 				selected_strip = istrip;
 				if	( istrip & CLIC_MARGE_INF )
-					gtk_menu_popup( (GtkMenu *)menu1_x, NULL, NULL, NULL, NULL,
+					gtk_menu_popup( (GtkMenu *)smenu_x, NULL, NULL, NULL, NULL,
 							event->button, event->time );
 				else if	( istrip & CLIC_MARGE_GAUCHE )
 					{
 					int lestrip = istrip & (~CLIC_MARGE);
 					printf("context menu strip %d\n", lestrip );
-					GtkWidget * lemenu = ((gstrip *)bandes.at(lestrip))->menu1_y;
+					GtkWidget * lemenu = ((gstrip *)bandes.at(lestrip))->smenu_y;
 					if	( lemenu )
 						gtk_menu_popup( (GtkMenu *)lemenu, NULL, NULL, NULL, NULL,
 								event->button, event->time );
@@ -628,7 +619,6 @@ else if	( event->type == GDK_BUTTON_RELEASE )
 			}
 		drag.mode = nil;
 		force_repaint = 1;
-		// gtk_widget_queue_draw( widget );
 		}
 	}
 }
@@ -641,8 +631,7 @@ if	( ( state & GDK_BUTTON1_MASK ) || ( state & GDK_BUTTON3_MASK ) )
 	{
 	drag.x1 = event->x;
 	drag.y1 = event->y;
-	queue_flag = 1;		// attention on compte sur la fonction idle de l'appli pour queuter le draw
-	// gtk_widget_queue_draw( widget );
+	force_repaint = 1;	// attention on compte sur la fonction idle de l'appli pour appeler paint()
 	}
 }
 
@@ -665,7 +654,6 @@ if	( istrip & CLIC_MARGE_INF )
 		else	zoomXbyK( 1.11 );
 		}
 	force_repaint = 1;
-	// gtk_widget_queue_draw( widget );
 	}
 else if	( istrip & CLIC_MARGE_GAUCHE )
 	{
@@ -683,7 +671,6 @@ else if	( istrip & CLIC_MARGE_GAUCHE )
 		else	b->zoomYbyK( 1.11 );
 		}
 	force_repaint = 1;
-	// gtk_widget_queue_draw( widget );
 	}
 else	{
 	// strip * b = bandes.at(istrip & (~CLIC_MARGE));	// pour science
@@ -698,13 +685,26 @@ else	{
 		panXbyK( 0.02 );	// pour audio
 		}
 	force_repaint = 1;
-	// gtk_widget_queue_draw( widget );
 	}
+}
+
+/** ===================== png service methods =================================== */
+
+void gpanel::png_save_drawpad( const char * fnam )
+{
+static GdkPixbuf * dumpix = NULL;	// pixbuf reutilisable! evite memory leak!
+dumpix = gdk_pixbuf_get_from_drawable( dumpix, drawpad, NULL, 0, 0, 0, 0, -1, -1 );
+if	( dumpix == NULL )
+	{ printf("failed gdk_pixbuf_get_from_drawable\n"); fflush(stdout); return; }
+if  	( gdk_pixbuf_save( dumpix, fnam, "png", NULL, NULL ) )
+	printf("Ok ecriture copie d'ecran %s\n", fnam );
+else	printf("oops, echec ecriture copie d'ecran %s\n", fnam );
+fflush(stdout);
 }
 
 /** ===================== pdf service methods =================================== */
 
-// fonction bloquante
+// fonction bloquante : GTK file chooser (si on n'aime pas, appeler panel::pdfplot() directement)  
 void gpanel::pdf_modal_layout( GtkWidget * mainwindow )
 {
 if ( bandes.size() == 0 )
@@ -754,8 +754,8 @@ gtk_box_pack_start( GTK_BOX( curbox ), curwidg, FALSE, FALSE, 0);
 
 curwidg = gtk_file_chooser_widget_new( GTK_FILE_CHOOSER_ACTION_SAVE );
 gtk_box_pack_start( GTK_BOX( curbox ), curwidg, TRUE, TRUE, 0 );
-gtk_file_chooser_set_current_folder( GTK_FILE_CHOOSER(curwidg), "C:\\tmp");
-gtk_file_chooser_set_current_name( GTK_FILE_CHOOSER(curwidg), "pipu.pdf" );
+gtk_file_chooser_set_current_folder( GTK_FILE_CHOOSER(curwidg), ".");
+gtk_file_chooser_set_current_name( GTK_FILE_CHOOSER(curwidg), "jluplot.pdf" );
 fchoo = curwidg;
 
 // boite horizontale
@@ -778,7 +778,7 @@ gtk_widget_show_all( curwin );
 
 /* on est venu ici alors qu'on est deja dans 1 boucle gtk_main
    alors donc on en imbrique une autre. Le prochain appel a
-   gtk_main_quit() fera sortir de cell-ci (innermost)
+   gtk_main_quit() fera sortir de celle-ci (innermost)
  */
 gtk_main();
 gtk_widget_destroy( curwin );
@@ -788,29 +788,20 @@ gtk_widget_destroy( curwin );
 void gpanel::pdf_ok_call()
 {
 char * fnam = gtk_file_chooser_get_filename( GTK_FILE_CHOOSER(fchoo) );
-if ( fnam )
-   {
-   unsigned int iban;
-   for	( iban = 0; iban < bandes.size(); iban++ )
-	bandes[iban]->optcadre = 1; // ici demo fond blanc + cadre en couleur
-   int retval = pdfplot( fnam, gtk_entry_get_text( GTK_ENTRY(edesc) ) );
-   printf("retour panel::pdfplot %s : %d\n", fnam, retval );
-   for	( iban = 0; iban < bandes.size(); iban++ )
-	bandes[iban]->optcadre = 0; // ici demo
-   }
-// remettre aux dimensions de la drawing area
-int ww, wh;
-gdk_drawable_get_size( widget->window, &ww, &wh );
-resize( ww, wh );
+if	( fnam )
+	{
+	int retval = pdfplot( fnam, gtk_entry_get_text( GTK_ENTRY(edesc) ) );
+	printf("retour panel::pdfplot %s : %d\n", fnam, retval );
+	}
 gtk_main_quit();
 }
 
 /** ===================== context menus =================================== */
 
 // menu de base, commun pour X-Axis et Y-Axis - peut être enrichi par l'application.
-// les callbacks peuvent differencier X de Y, et identifier le strip pour Y
-// grace au pointeur sur le panel qui leur est passe, qui leur donne acces a selected_strip
-GtkWidget * gpanel::mkmenu1( const char * title )
+// chaque callback peut differencier X de Y, et identifier le strip pour Y
+// grace au pointeur sur le panel qui lui est passe, qui lui donne acces a selected_strip
+GtkWidget * gpanel::mksmenu( const char * title )
 {
 GtkWidget * curmenu;
 GtkWidget * curitem;
@@ -827,24 +818,36 @@ gtk_widget_show ( curitem );
 
 curitem = gtk_menu_item_new_with_label("Full");
 g_signal_connect( G_OBJECT( curitem ), "activate",
-		  G_CALLBACK( menu1_full ), (gpointer)this );
+		  G_CALLBACK( smenu_full ), (gpointer)this );
 gtk_menu_shell_append( GTK_MENU_SHELL( curmenu ), curitem );
 gtk_widget_show ( curitem );
 
 curitem = gtk_menu_item_new_with_label("Zoom in");
 g_signal_connect( G_OBJECT( curitem ), "activate",
-		  G_CALLBACK( menu1_zoomin ), (gpointer)this );
+		  G_CALLBACK( smenu_zoomin ), (gpointer)this );
 gtk_menu_shell_append( GTK_MENU_SHELL(curmenu), curitem );
 gtk_widget_show ( curitem );
 
 curitem = gtk_menu_item_new_with_label("Zoom out");
 g_signal_connect( G_OBJECT( curitem ), "activate",
-		  G_CALLBACK( menu1_zoomout ), (gpointer)this );
+		  G_CALLBACK( smenu_zoomout ), (gpointer)this );
 gtk_menu_shell_append( GTK_MENU_SHELL(curmenu), curitem );
 gtk_widget_show ( curitem );
 
 return curmenu;
 }
+
+// personnalisation du titre (en remplacement du titre par defaut)
+void gpanel::smenu_set_title( GtkWidget * lemenu, const char *titre )
+{
+GList * momes = gtk_container_get_children( GTK_CONTAINER(lemenu) );
+if	( momes )
+	{	// on prend le premier child, sur lequel pointe deja la liste
+	if	( GTK_IS_MENU_ITEM( momes->data ) )
+		gtk_menu_item_set_label( GTK_MENU_ITEM(momes->data), titre );
+	}
+}
+
 /** ===================== ghost_drag methods ===================================== */
 
 void ghost_drag::zone( cairo_t * cair )
@@ -995,7 +998,7 @@ else if	( event->type == GDK_BUTTON_RELEASE )
 			else if ( event->button == 3 )
 				{
 				panneau->selected_strip = CLIC_ZOOMBAR;
-				gtk_menu_popup( (GtkMenu *)panneau->menu1_x, NULL, NULL, NULL, NULL,
+				gtk_menu_popup( (GtkMenu *)panneau->smenu_x, NULL, NULL, NULL, NULL,
 							event->button, event->time );
 				}
 			}
@@ -1015,7 +1018,6 @@ else if	( event->type == GDK_BUTTON_RELEASE )
 			mmax += panneau->fullmmin;
 			panneau->zoomM( mmin, mmax );
 			panneau->force_repaint = 1;
-			// gtk_widget_queue_draw( panneau->widget );
 			}
 		}
 	}
@@ -1046,7 +1048,6 @@ if	( panneau )
 		panneau->zoomXbyK( 1.1 );
 		}
 	panneau->force_repaint = 1;
-	// gtk_widget_queue_draw( panneau->widget );
 	}
 }
 
