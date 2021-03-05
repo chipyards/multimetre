@@ -58,7 +58,7 @@ if	( glo->running )
 		glo->panneau1.zoomM( U0, U1 );
 		glo->panneau1.force_repaint = 1;
 				// strip XY
-		layer_f_param * lelay2 = (layer_f_param *)glo->panneau2.bandes[0]->courbes[0];
+		layer_f_param * lelay2 = (layer_f_param *)glo->panneau2.bandes[0]->courbes[glo->recording_layer];
 		lelay2->scan();
 		glo->panneau2.fullMN(); glo->panneau2.force_repaint = 1;
 		}
@@ -100,6 +100,15 @@ if	( glo->running == 0 )
 void clear_call( GtkWidget *widget, glostru * glo )
 {
 glo->clearXY();
+}
+
+void xy_layer_call( GtkWidget *widget, glostru * glo )
+{
+glo->recording_layer = gtk_spin_button_get_value_as_int( GTK_SPIN_BUTTON(widget) );
+printf("recording XY layer set to %d\n", glo->recording_layer ); fflush(stdout);
+if	( glo->recording_layer < glo->panneau2.bandes[0]->courbes.size() )
+	glo->panneau2.bandes[0]->courbes[glo->recording_layer]->visible = 1;
+glo->wri = 0;
 }
 
 // les codes 'g', 'u', 'v', 'c' pour piloter les AimTTi 1604
@@ -210,6 +219,22 @@ void key_call_back2( int v, void * vglo )
 glostru * glo = (glostru *)vglo;
 switch	( v )
 	{
+	case GDK_KEY_KP_0 :
+	case '0' : glo->panneau2.toggle_vis( 0, 0 ); break;
+	case GDK_KEY_KP_1 :
+	case '1' : glo->panneau2.toggle_vis( 0, 1 ); break;
+	case GDK_KEY_KP_2 :
+	case '2' : glo->panneau2.toggle_vis( 0, 2 ); break;
+	case GDK_KEY_KP_3 :
+	case '3' : glo->panneau2.toggle_vis( 0, 3 ); break;
+	case GDK_KEY_KP_4 :
+	case '4' : glo->panneau2.toggle_vis( 0, 4 ); break;
+	case GDK_KEY_KP_5 :
+	case '5' : glo->panneau2.toggle_vis( 0, 5 ); break;
+	case GDK_KEY_KP_6 :
+	case '6' : glo->panneau2.toggle_vis( 0, 6 ); break;
+	case GDK_KEY_KP_7 :
+	case '7' : glo->panneau2.toggle_vis( 0, 7 ); break;
 	case 'p' :
 		char fnam[32], capt[128];
 		snprintf( fnam, sizeof(fnam), "aimtti2.pdf" );
@@ -323,7 +348,7 @@ while	( cnt >= 16 )
 		if	( j == QMSG )	// si en plus il a pile la bonne longueur, on l'accepte
 			{
 			unsigned short time;
-			short unsigned int X_period, X_lag, Y_period, Y_lag;
+			short int X_period, X_lag, Y_period, Y_lag;
 			double val;
 			char gui_msg[128];
 			msgbuf[QMSG-1] = 0;
@@ -375,7 +400,7 @@ return 0;
 
 void glostru::clearXY()
 {
-layer_f_param * lelay2 = (layer_f_param *)panneau2.bandes[0]->courbes[0];
+layer_f_param * lelay2 = (layer_f_param *)panneau2.bandes[0]->courbes[recording_layer];
 wri = 0;
 lelay2->qu = 0;
 }
@@ -388,15 +413,15 @@ if	( !running )
 
 layer_f_fifo  * lelay0 = (layer_f_fifo  *)panneau1.bandes[0]->courbes[0];
 layer_f_fifo  * lelay1 = (layer_f_fifo  *)panneau1.bandes[0]->courbes[1];
-layer_f_param * lelay2 = (layer_f_param *)panneau2.bandes[0]->courbes[0];
+layer_f_param * lelay2 = (layer_f_param *)panneau2.bandes[0]->courbes[recording_layer];
 
 // action sur le graphe fifo X(t) Y(t)
 lelay0->push(Xv);
 lelay1->push(Yv);
 
 // action sur le graphe Y(X)
-Xbuf[wri&(QBUF-1)] = Xv;
-Ybuf[wri&(QBUF-1)] = Yv; 
+Xbuf[recording_layer][wri&(QBUF-1)] = Xv;
+Ybuf[recording_layer][wri&(QBUF-1)] = Yv; 
 wri++;
 if	( wri <= QBUF )
 	lelay2->qu = wri;
@@ -460,29 +485,36 @@ panneau2.add_strip( curbande );
 panneau2.pdf_DPI = 100;	// defaut est 72
 
 // configurer le strip
-curbande->bgcolor.set( 1.0, 0.95, 0.85 );
+curbande->bgcolor.set( 1.0, 1.0, 1.0 );
 curbande->Ylabel = "XY";
 curbande->optX = 1;
 curbande->subtk = 10;
 
-// creer un layer
+// creer 8 layers
 layer_f_param * curcour2;
-curcour2 = new layer_f_param;
-curbande->add_layer( curcour2 );
+char lab[32];
+for	( int i = 0; i < 8; i++ )
+	{
+	// creer un layer
+	curcour2 = new layer_f_param;
+	curbande->add_layer( curcour2 );
 
-// configurer le layer
-curcour2->set_km( 1.0 );
-curcour2->set_m0( 0.0 );
-curcour2->set_kn( 1.0 );
-curcour2->set_n0( 0.0 );
-curcour2->label = string("Y(X)");
-curcour2->fgcolor.set( 0.75, 0.0, 0.0 );
+	// configurer le layer
+	curcour2->set_km( 1.0 );
+	curcour2->set_m0( 0.0 );
+	curcour2->set_kn( 1.0 );
+	curcour2->set_n0( 0.0 );
+	snprintf( lab, sizeof(lab), "XY N°%d", i );
+	curcour2->label = string(lab);
+	curcour2->fgcolor.arc_en_ciel( i % 8 );
+	curcour2->visible = (i?0:1);
 
-// connexion layout - data
-curcour2 = (layer_f_param *)panneau2.bandes[0]->courbes[0];
-curcour2->U = Xbuf;
-curcour2->V = Ybuf;
-curcour2->qu = 0;
+	// connexion layout - data
+	curcour2 = (layer_f_param *)panneau2.bandes[0]->courbes[i];
+	curcour2->U = Xbuf[i];
+	curcour2->V = Ybuf[i];
+	curcour2->qu = 0;
+	}
 
 }
 
@@ -549,20 +581,26 @@ gtk_box_pack_start( GTK_BOX( glo->vmain ), curwidg, FALSE, FALSE, 0 );
 glo->hbut = curwidg;
 
 /* simple bouton */
-curwidg = gtk_button_new_with_label (" Run/Pause ");
+curwidg = gtk_button_new_with_label ("Run/Pause");
 gtk_signal_connect( GTK_OBJECT(curwidg), "clicked",
                     GTK_SIGNAL_FUNC( run_call ), (gpointer)glo );
 gtk_box_pack_start( GTK_BOX( glo->hbut ), curwidg, TRUE, TRUE, 0 );
 
+// spin button pour choisir layer XY a enregistrer
+curwidg = gtk_spin_button_new_with_range( 0.0, 7.0, 1.0 );
+g_signal_connect( curwidg, "value-changed",
+		  G_CALLBACK( xy_layer_call ), (gpointer)glo );
+gtk_box_pack_start( GTK_BOX( glo->hbut ), curwidg, FALSE, FALSE, 0 );
+
 /* simple bouton */
-curwidg = gtk_button_new_with_label (" Restart ");
+curwidg = gtk_button_new_with_label ("Restart XY");
 gtk_signal_connect( GTK_OBJECT(curwidg), "clicked",
                     GTK_SIGNAL_FUNC( clear_call ), (gpointer)glo );
 gtk_box_pack_start( GTK_BOX( glo->hbut ), curwidg, TRUE, TRUE, 0 );
 
 // entree non editable
 curwidg = gtk_entry_new();
-gtk_widget_set_usize( curwidg, 160, 0 );
+gtk_widget_set_usize( curwidg, 150, 0 );
 gtk_entry_set_editable( GTK_ENTRY(curwidg), FALSE );
 gtk_entry_set_text( GTK_ENTRY(curwidg), "X" );
 gtk_box_pack_start( GTK_BOX( glo->hbut ), curwidg, FALSE, FALSE, 0 );
@@ -570,7 +608,7 @@ glo->erpX = curwidg;
 
 // entree non editable
 curwidg = gtk_entry_new();
-gtk_widget_set_usize( curwidg, 160, 0 );
+gtk_widget_set_usize( curwidg, 150, 0 );
 gtk_entry_set_editable( GTK_ENTRY(curwidg), FALSE );
 gtk_entry_set_text( GTK_ENTRY(curwidg), "Y" );
 gtk_box_pack_start( GTK_BOX( glo->hbut ), curwidg, FALSE, FALSE, 0 );

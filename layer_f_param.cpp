@@ -62,6 +62,7 @@ cairo_set_source_rgb( cai, fgcolor.dR, fgcolor.dG, fgcolor.dB );
 cairo_move_to( cai, 20, -(parent->ndy) + ylabel );
 cairo_show_text( cai, label.c_str() );
 
+cairo_set_line_width( cai, 1.0 );
 // l'origine est en bas a gauche de la zone utile, Y+ est vers le bas (because cairo)
 double tU, tV, curx, cury, maxx;
 if ( goto_U( u0 ) )

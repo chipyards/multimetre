@@ -27,16 +27,17 @@ unsigned int fifoWI;
 unsigned int fifoRI;
 
 // buffer pour message extrait du fifo
-#define QMSG		16
+#define QMSG	16
 char msgbuf[QMSG];
 
 // buffers pour les layers X(t), Y(t)
 #define QBUF 	(1<<11)
 #define BUFMASK (QBUF-1)
-float Xbuf[QBUF];
-float Ybuf[QBUF];
+float Xbuf[8][QBUF];
+float Ybuf[8][QBUF];
 unsigned int wri;
 
+unsigned int recording_layer;	// recording XY layer number [0:9] 
 int running;		// scroll continu
 double Uspan;		// etendue fenetre scroll continu
 
@@ -50,7 +51,7 @@ double valY;
 
 public:
 // constructeur
-glostru() : fifoWI(0), fifoRI(0), wri(0), running(1), Uspan(500.0),
+glostru() : fifoWI(0), fifoRI(0), wri(0), recording_layer(0), running(1), Uspan(500.0),
 	    oldtimeX(0), oldtimeY(0), valX(0.0), valY(0.0) {};
 
 // methodes
