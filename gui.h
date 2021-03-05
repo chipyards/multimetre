@@ -8,8 +8,6 @@ GtkWidget *       darea1;
 GtkWidget *       zarea1;
 GtkWidget *     darea2;
 GtkWidget *   hbut;
-GtkWidget *     brun;
-GtkWidget *     braz;
 GtkWidget *     erpX;
 GtkWidget *     erpY;
 
@@ -52,7 +50,7 @@ double valY;
 
 public:
 // constructeur
-glostru() : fifoWI(0), fifoRI(0), wri(0), running(1), Uspan(1000.0),
+glostru() : fifoWI(0), fifoRI(0), wri(0), running(1), Uspan(500.0),
 	    oldtimeX(0), oldtimeY(0), valX(0.0), valY(0.0) {};
 
 // methodes

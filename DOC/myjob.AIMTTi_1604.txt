@@ -1,0 +1,78 @@
+Liaison serie du multimetre AIMTTi 1604
+
+1. RS232 Hardware -------------------------------------------
+
+- Baud Rate 9600, pas de flow control
+- connecteur femelle (type modem)
+
+- Cote emission du 1604 :
+                 _____________________
+                |       4 DTR (+10V)
+             | /
+        opto |/
+        bjt  |\
+             | \
+                |_____________________
+                |       2 RX (du PC)
+        R       Z
+        10k     Z
+                Z
+                |_____________________
+                        7 RTS (-10V)
+
+  Cet ensemble est flottant, on peut mettre  TX a la masse, alimenter 4 DTR en +5V au travers d'une resistance,
+  laisser flotter 7 RTS, pour obtenir un signal UART-compatible (ok avec 4.7k).
+
+- Cote reception du 1604 :
+                 _____________________
+                |       3 TX ( du PC)
+        R       Z
+        env.1k  Z
+                Z
+              __|__
+        LED   \   /
+              _\_/_
+        GND_____|_____________________
+                        5 GND
+
+  Le GND de cet ensemble est relie a la prise de terre de l'alim du multimetre, ainsi que la carcasse du connecteur.
+  La compatibilite UART peut etre obtenue soit en inversant avec un PNP soit en coupant la connexion de terre
+  de cette diode dans le multimetre.
+  L'avantage du PNP c'est que la demande en courant sur l'UART est moindre.
+
+
+2. Software -------------------------------------------
+
+- on a installe leur antique GUI, et espionne le trafic avec un cable RS232 en "Y"
+
+- le PC envoie des opcodes de 1 byte, l'instrument envoie toujours un echo identique.
+  A part les codes Connect-Disconnect, tous les codes correspondent a des touches du panel :
+        Connect 75 'u'	Disconnect 76 'v'
+        mV 6E 'n'	V 66 'f'	Ohm 69 'i'	UP 61 'a'
+        mA 65 'e'	A 64 'd'	Hz 6A 'j'	DN 62 'b'
+        DC 6D 'm'	AC 6C 'l'	Shift 6B 'k'	Auto 63 'c'
+        Operate 67 'g'
+
+- A partir de la reception du code Connect, l'instrument envoie un report de 10 bytes toutes les 400ms.
+  Le code Operate met l'instrument en veille, et le réveille.
+  En veille l'émission des reports est suspendue, elle reprend au réveil.
+
+- il est possible que le code de debut de report soit 0D, mais rien ne garantit que ce code ne puisse
+  apparaitre ailleurs dans le report
+
+- les 10 bytes sont groupes dans un paquet de 17ms, le timing peut suffir à les delimiter (pitch 1.8ms)
+
+- les bytes 4-8 correspondent aux 5 digits decimaux, en 7 segments ! (FE = '8', LSB=dot)
+
+3. Projet ---------------------------------------------
+
+Un STM32F103 va faire passerelle entre les deux 1604 et le PC
+- UART2 vers PC via CDC
+- UART1 et UART3 vers les deux 1604
+  Ces 2 UARTs sont FT ce qui va permettre d'augmenter les marges opérationnelles des optos
+
+framework :
+STM32 : F103_keil_ats, 3 UARTs avec interrupt et fifo
+	https://github.com/chipyards/F1_keil_ats/tree/aimtti_1604
+PC : GTK : jluplot + serial
+	https://github.com/chipyards/multimetre.git

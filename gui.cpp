@@ -43,7 +43,7 @@ if	( ( ticks % 3 ) == 0 )
 if	( glo->running )
 	{
 	// cadrages avec moderations
-	if	( ( ticks % 7 ) == 0 )
+	if	( ( ticks % 6 ) == 0 )
 		{		// strip du fifo en scroll continu
 		layer_f_fifo * lelay0 = (layer_f_fifo *)glo->panneau1.bandes[0]->courbes[0];
 		layer_f_fifo * lelay1 = (layer_f_fifo *)glo->panneau1.bandes[0]->courbes[1];
@@ -102,6 +102,37 @@ void clear_call( GtkWidget *widget, glostru * glo )
 glo->clearXY();
 }
 
+// les codes 'g', 'u', 'v', 'c' pour piloter les AimTTi 1604
+
+void send_g_call( GtkWidget *widget, glostru * glo )
+{
+char c = 'g';
+printf("tx '%c'\n", c ); fflush(stdout);
+nb_serial_write( &c, 1 );
+}
+
+void send_u_call( GtkWidget *widget, glostru * glo )
+{
+char c = 'u';
+printf("tx '%c'\n", c ); fflush(stdout);
+nb_serial_write( &c, 1 );
+}
+
+void send_v_call( GtkWidget *widget, glostru * glo )
+{
+char c = 'v';
+printf("tx '%c'\n", c ); fflush(stdout);
+nb_serial_write( &c, 1 );
+}
+
+void send_c_call( GtkWidget *widget, glostru * glo )
+{
+char c = 'c';
+printf("tx '%c'\n", c ); fflush(stdout);
+nb_serial_write( &c, 1 );
+}
+
+
 /** ============================ GLUPLOT call backs =============== */
 
 void clic_call_back1( double M, double N, void * vglo )
@@ -110,7 +141,32 @@ printf("clic M N %g %g\n", M, N );
 // glostru * glo = (glostru *)vglo;
 }
 
-void key_call_back1( int v, void * vglo )
+void key_call_back_common( int v, void * vglo )
+{
+glostru * glo = (glostru *)vglo;
+switch	( v )
+	{
+	// le dump, aussi utile pour faire un flush de stdout
+	case 'd' :
+		glo->panneau1.dump(); fflush(stdout);
+		glo->panneau2.dump(); fflush(stdout);
+		break;
+	// les codes 'g', 'u', 'v', 'c' pour piloter les AimTTi 1604
+	case 'g' :	// on/off
+	case 'u' :	// connect
+	case 'v' :	// disconnect
+	case 'c' :	// auto range
+		{
+		char c = (char)v;
+		printf("tx '%c'\n", c ); fflush(stdout);
+		nb_serial_write( &c, 1 );
+		}
+		break;
+	}
+}
+
+
+void key_call_back1( int v, void * vglo )	// panneau1
 {
 glostru * glo = (glostru *)vglo;
 switch	( v )
@@ -123,10 +179,6 @@ switch	( v )
 	// l'option offscreen drawpad
 	case 'o' : glo->panneau1.offscreen_flag = 1; break;
 	case 'n' : glo->panneau1.offscreen_flag = 0; break;
-	// le dump, aussi utile pour faire un flush de stdout
-	case 'd' :
-		glo->panneau1.dump(); fflush(stdout);
-		break;
 	//
 	case 't' :
 		glo->panneau1.bandes[0]->subtk *= 2.0;
@@ -143,23 +195,13 @@ switch	( v )
 	//
 	case 'p' :
 		char fnam[32], capt[128];
-		snprintf( fnam, sizeof(fnam), "demo2.1.pdf" );
+		snprintf( fnam, sizeof(fnam), "aimtti1.pdf" );
 		modpop_entry( "PDF plot", "nom du fichier", fnam, sizeof(fnam), GTK_WINDOW(glo->wmain) );
 		snprintf( capt, sizeof(capt), "plot FIFO" );
 		modpop_entry( "PDF plot", "description", capt, sizeof(capt), GTK_WINDOW(glo->wmain) );
 		glo->panneau1.pdfplot( fnam, capt );
 		break;
-	// codes pour les multimetres 1604
-	case 'g' :	// on/off
-	case 'u' :	// connect
-	case 'v' :	// disconnect
-		{
-		char c = (char)v;
-		printf("tx '%c'\n", c ); fflush(stdout);
-		nb_serial_write( &c, 1 );
-		}
-		break;
-
+	default : key_call_back_common( v, vglo );
 	}
 }
 
@@ -168,19 +210,15 @@ void key_call_back2( int v, void * vglo )
 glostru * glo = (glostru *)vglo;
 switch	( v )
 	{
-	// le dump, aussi utile pour faire un flush de stdout
-	case 'd' :
-		glo->panneau2.dump(); fflush(stdout);
-		break;
-	//
 	case 'p' :
 		char fnam[32], capt[128];
-		snprintf( fnam, sizeof(fnam), "demo2.2.pdf" );
+		snprintf( fnam, sizeof(fnam), "aimtti2.pdf" );
 		modpop_entry( "PDF plot", "nom du fichier", fnam, sizeof(fnam), GTK_WINDOW(glo->wmain) );
 		snprintf( capt, sizeof(capt), "plot XY" );
 		modpop_entry( "PDF plot", "description", capt, sizeof(capt), GTK_WINDOW(glo->wmain) );
 		glo->panneau2.pdfplot( fnam, capt );
 		break;
+	default : key_call_back_common( v, vglo );
 	}
 }
 
@@ -305,7 +343,7 @@ while	( cnt >= 16 )
 						set_point( (int)X_lag, valX, valY );
 						}
 					// affichage textuel dans le GUI
-					snprintf( gui_msg, sizeof(gui_msg), "%5u %5u  %g", X_period, X_lag, val );
+					snprintf( gui_msg, sizeof(gui_msg), "%u/%u   %g", X_lag, X_period, val );
 					X_status_show( gui_msg );
 					}
 				else	{
@@ -318,7 +356,7 @@ while	( cnt >= 16 )
 						set_point( (int)Y_lag, valX, valY );
 						}
 					// affichage textuel dans le GUI
-					snprintf( gui_msg, sizeof(gui_msg), "%5u %5u  %g", Y_period, Y_lag, val );
+					snprintf( gui_msg, sizeof(gui_msg), "%u/%u   %g", Y_lag, Y_period, val );
 					Y_status_show( gui_msg );
 					}
 
@@ -437,7 +475,7 @@ curcour2->set_km( 1.0 );
 curcour2->set_m0( 0.0 );
 curcour2->set_kn( 1.0 );
 curcour2->set_n0( 0.0 );
-curcour2->label = string("Lissajoux");
+curcour2->label = string("Y(X)");
 curcour2->fgcolor.set( 0.75, 0.0, 0.0 );
 
 // connexion layout - data
@@ -515,14 +553,12 @@ curwidg = gtk_button_new_with_label (" Run/Pause ");
 gtk_signal_connect( GTK_OBJECT(curwidg), "clicked",
                     GTK_SIGNAL_FUNC( run_call ), (gpointer)glo );
 gtk_box_pack_start( GTK_BOX( glo->hbut ), curwidg, TRUE, TRUE, 0 );
-glo->brun = curwidg;
 
 /* simple bouton */
 curwidg = gtk_button_new_with_label (" Restart ");
 gtk_signal_connect( GTK_OBJECT(curwidg), "clicked",
                     GTK_SIGNAL_FUNC( clear_call ), (gpointer)glo );
 gtk_box_pack_start( GTK_BOX( glo->hbut ), curwidg, TRUE, TRUE, 0 );
-glo->braz = curwidg;
 
 // entree non editable
 curwidg = gtk_entry_new();
@@ -539,6 +575,30 @@ gtk_entry_set_editable( GTK_ENTRY(curwidg), FALSE );
 gtk_entry_set_text( GTK_ENTRY(curwidg), "Y" );
 gtk_box_pack_start( GTK_BOX( glo->hbut ), curwidg, FALSE, FALSE, 0 );
 glo->erpY = curwidg;
+
+/* simple bouton */
+curwidg = gtk_button_new_with_label ("On/Off (g)");
+gtk_signal_connect( GTK_OBJECT(curwidg), "clicked",
+                    GTK_SIGNAL_FUNC( send_g_call ), (gpointer)glo );
+gtk_box_pack_start( GTK_BOX( glo->hbut ), curwidg, TRUE, TRUE, 0 );
+
+/* simple bouton */
+curwidg = gtk_button_new_with_label ("Connect(u)");
+gtk_signal_connect( GTK_OBJECT(curwidg), "clicked",
+                    GTK_SIGNAL_FUNC( send_u_call ), (gpointer)glo );
+gtk_box_pack_start( GTK_BOX( glo->hbut ), curwidg, TRUE, TRUE, 0 );
+
+/* simple bouton */
+curwidg = gtk_button_new_with_label ("Disconn(v)");
+gtk_signal_connect( GTK_OBJECT(curwidg), "clicked",
+                    GTK_SIGNAL_FUNC( send_v_call ), (gpointer)glo );
+gtk_box_pack_start( GTK_BOX( glo->hbut ), curwidg, TRUE, TRUE, 0 );
+
+/* simple bouton */
+curwidg = gtk_button_new_with_label ("Auto(c)");
+gtk_signal_connect( GTK_OBJECT(curwidg), "clicked",
+                    GTK_SIGNAL_FUNC( send_c_call ), (gpointer)glo );
+gtk_box_pack_start( GTK_BOX( glo->hbut ), curwidg, TRUE, TRUE, 0 );
 
 // connecter la zoombar au panel et inversement
 glo->panneau1.zoombar = &glo->zbar;
