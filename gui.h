@@ -8,6 +8,8 @@ GtkWidget *       darea1;
 GtkWidget *       zarea1;
 GtkWidget *     darea2;
 GtkWidget *   hbut;
+GtkWidget *     brun;
+GtkWidget *     slay;
 GtkWidget *     erpX;
 GtkWidget *     erpY;
 
@@ -36,6 +38,7 @@ char msgbuf[QMSG];
 float Xbuf[8][QBUF];
 float Ybuf[8][QBUF];
 unsigned int wri;
+int curlag;
 
 unsigned int recording_layer;	// recording XY layer number [0:9] 
 int running;		// scroll continu
@@ -51,7 +54,7 @@ double valY;
 
 public:
 // constructeur
-glostru() : fifoWI(0), fifoRI(0), wri(0), recording_layer(0), running(1), Uspan(500.0),
+glostru() : fifoWI(0), fifoRI(0), wri(0), curlag(0), recording_layer(0), running(1), Uspan(500.0),
 	    oldtimeX(0), oldtimeY(0), valX(0.0), valY(0.0) {};
 
 // methodes

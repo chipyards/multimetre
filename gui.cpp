@@ -34,6 +34,11 @@ static glostru theglo;
 int idle_call( glostru * glo )
 {
 static unsigned int ticks = 0;
+static const GdkColor verde = { 0, 0x8000, 0xFF00, 0x8000 };
+static const GdkColor amare = { 0, 0xE000, 0xFF00, 0x0000 };
+static const GdkColor laran = { 0, 0xFF00, 0xB000, 0x8000 };
+static const GdkColor verme = { 0, 0xFF00, 0x3000, 0x3000 };
+
 ticks++;
 
 // acquisition de donnees en temps reel
@@ -62,6 +67,25 @@ if	( glo->running )
 		lelay2->scan();
 		glo->panneau2.fullMN(); glo->panneau2.force_repaint = 1;
 		}
+	}
+
+if	( ( ticks % 6 ) == 3 )
+	{
+	if	( glo->running )
+		{
+		int lag = glo->curlag;
+		const GdkColor * cor;
+		if	( lag < 5 )
+			cor = &verde;
+		else if	( lag < 10 )
+			cor = &amare;
+		else if	( lag < 20 )
+			cor = &laran;
+		else	cor = &verme;
+		gtk_widget_modify_bg( glo->brun, GTK_STATE_NORMAL, cor );	
+		gtk_widget_modify_bg( glo->brun, GTK_STATE_PRELIGHT, cor );	
+		}
+	else	gtk_widget_modify_bg( glo->brun, GTK_STATE_NORMAL, NULL );
 	}
 
 // moderateur de drawing
@@ -171,6 +195,9 @@ switch	( v )
 		nb_serial_write( &c, 1 );
 		}
 		break;
+	case ' ' :
+		run_call( NULL, glo );
+		break;
 	}
 }
 
@@ -188,20 +215,20 @@ switch	( v )
 	// l'option offscreen drawpad
 	case 'o' : glo->panneau1.offscreen_flag = 1; break;
 	case 'n' : glo->panneau1.offscreen_flag = 0; break;
-	//
+	// experience sur le subticks
 	case 't' :
 		glo->panneau1.bandes[0]->subtk *= 2.0;
 		glo->panneau1.force_repaint = 1;
 		glo->panneau1.force_redraw = 1;		// necessaire pour panneau1 a cause de offscreen_flag
 		break;
-	//
+	// zoom en mode running
 	case 'Z' :
 		glo->Uspan *= 2;
 		break;
 	case 'z' :
 		glo->Uspan *= 0.5;
 		break;
-	//
+	// PDF
 	case 'p' :
 		char fnam[32], capt[128];
 		snprintf( fnam, sizeof(fnam), "aimtti1.pdf" );
@@ -235,6 +262,20 @@ switch	( v )
 	case '6' : glo->panneau2.toggle_vis( 0, 6 ); break;
 	case GDK_KEY_KP_7 :
 	case '7' : glo->panneau2.toggle_vis( 0, 7 ); break;
+	// changer le layer pour ecriture
+	case '>' :
+		if	( glo->recording_layer < 7 )
+			{	// N.B. la callback du bouton va se charger de gerer le changement
+			gtk_spin_button_set_value( GTK_SPIN_BUTTON(glo->slay), glo->recording_layer + 1);
+			} break;
+	case '<' :
+		if	( glo->recording_layer > 0 )
+			{
+			gtk_spin_button_set_value( GTK_SPIN_BUTTON(glo->slay), glo->recording_layer - 1);
+			} break;
+	// restart le layer selectionne en ecriture
+	case 'R' : glo->clearXY(); break;
+	// PDF
 	case 'p' :
 		char fnam[32], capt[128];
 		snprintf( fnam, sizeof(fnam), "aimtti2.pdf" );
@@ -247,6 +288,97 @@ switch	( v )
 	}
 }
 
+/** ============================ l'enrichissement de menu Y ======= */
+// enrichissement du menu Y du strip 1 "XY"
+// callbacks des boutons radio
+
+static void change_kr( gpanel * panneau, double lekr )
+{
+strip * lestrip = panneau->bandes[panneau->selected_strip];
+lestrip->kr = lekr;	// un zoom sur place est necessaire pour recalculer les ticks
+lestrip->zoomY( 0.0, (double)lestrip->ndy );
+panneau->force_repaint = 1;
+}
+
+static void Y_menu_x100_call( GtkWidget *widget,  gpanel * panneau  )
+{
+if	( gtk_check_menu_item_get_active( GTK_CHECK_MENU_ITEM(widget) ) )
+	change_kr( panneau, 0.01 );
+}
+static void Y_menu_x10_call( GtkWidget *widget,  gpanel * panneau  )
+{
+if	( gtk_check_menu_item_get_active( GTK_CHECK_MENU_ITEM(widget) ) )
+	change_kr( panneau, 0.1 );
+}
+static void Y_menu_x1_call( GtkWidget *widget,  gpanel * panneau  )
+{
+if	( gtk_check_menu_item_get_active( GTK_CHECK_MENU_ITEM(widget) ) )
+	change_kr( panneau, 1.0 );
+}
+static void Y_menu_x01_call( GtkWidget *widget,  gpanel * panneau  )
+{
+if	( gtk_check_menu_item_get_active( GTK_CHECK_MENU_ITEM(widget) ) )
+	change_kr( panneau, 10.0 );
+}
+static void Y_menu_x001_call( GtkWidget *widget,  gpanel * panneau  )
+{
+if	( gtk_check_menu_item_get_active( GTK_CHECK_MENU_ITEM(widget) ) )
+	change_kr( panneau, 100.0 );
+}
+
+static void enrich_Y_menu( gpanel * panneau, int istrip  )
+{
+GtkWidget * curmenu;
+GtkWidget * curitem;
+GSList *group = NULL;
+
+curmenu = ((gstrip *)panneau->bandes[istrip])->smenu_y;
+if	( curmenu == NULL )
+	return;
+
+curitem = gtk_separator_menu_item_new();
+gtk_menu_shell_append( GTK_MENU_SHELL( curmenu ), curitem );
+gtk_widget_show ( curitem );
+
+curitem = gtk_radio_menu_item_new_with_label( group, "X 100");
+g_signal_connect( G_OBJECT( curitem ), "activate",
+		  G_CALLBACK( Y_menu_x100_call ), (gpointer)panneau );
+gtk_check_menu_item_set_active( GTK_CHECK_MENU_ITEM(curitem), FALSE );
+gtk_menu_shell_append( GTK_MENU_SHELL( curmenu ), curitem );
+gtk_widget_show ( curitem );
+
+group = gtk_radio_menu_item_get_group( GTK_RADIO_MENU_ITEM(curitem) );
+curitem = gtk_radio_menu_item_new_with_label( group, "X 10");
+g_signal_connect( G_OBJECT( curitem ), "activate",
+		  G_CALLBACK( Y_menu_x10_call ), (gpointer)panneau );
+gtk_check_menu_item_set_active( GTK_CHECK_MENU_ITEM(curitem), FALSE );
+gtk_menu_shell_append( GTK_MENU_SHELL( curmenu ), curitem );
+gtk_widget_show ( curitem );
+
+group = gtk_radio_menu_item_get_group( GTK_RADIO_MENU_ITEM(curitem) );
+curitem = gtk_radio_menu_item_new_with_label( group, "X 1");
+g_signal_connect( G_OBJECT( curitem ), "activate",
+		  G_CALLBACK( Y_menu_x1_call ), (gpointer)panneau );
+gtk_check_menu_item_set_active( GTK_CHECK_MENU_ITEM(curitem), TRUE );
+gtk_menu_shell_append( GTK_MENU_SHELL( curmenu ), curitem );
+gtk_widget_show ( curitem );
+
+group = gtk_radio_menu_item_get_group( GTK_RADIO_MENU_ITEM(curitem) );
+curitem = gtk_radio_menu_item_new_with_label( group, "X 0.1");
+g_signal_connect( G_OBJECT( curitem ), "activate",
+		  G_CALLBACK( Y_menu_x01_call ), (gpointer)panneau );
+gtk_check_menu_item_set_active( GTK_CHECK_MENU_ITEM(curitem), FALSE );
+gtk_menu_shell_append( GTK_MENU_SHELL( curmenu ), curitem );
+gtk_widget_show ( curitem );
+
+group = gtk_radio_menu_item_get_group( GTK_RADIO_MENU_ITEM(curitem) );
+curitem = gtk_radio_menu_item_new_with_label( group, "X 0.01");
+g_signal_connect( G_OBJECT( curitem ), "activate",
+		  G_CALLBACK( Y_menu_x001_call ), (gpointer)panneau );
+gtk_check_menu_item_set_active( GTK_CHECK_MENU_ITEM(curitem), FALSE );
+gtk_menu_shell_append( GTK_MENU_SHELL( curmenu ), curitem );
+gtk_widget_show ( curitem );
+}
 /** ============================ l'application ==================== */
 
 static void X_status_show( char * msg )
@@ -353,9 +485,9 @@ while	( cnt >= 16 )
 			char gui_msg[128];
 			msgbuf[QMSG-1] = 0;
 			if	( extract_timestamp( msgbuf, &time ) )
-				{ printf("]%s[ BAD TIMESTAMP\n", msgbuf ); fflush(stdout); }
+				{ printf("%c ]%s[ BAD TIMESTAMP\n", 'W' + XYflag, msgbuf ); fflush(stdout); }
 			else if	( extract_val( msgbuf, &val ) )
-				{ printf("]%s[ BAD VAL\n", msgbuf ); fflush(stdout); }
+				{ printf("%c ]%s[ BAD VAL\n", 'W' + XYflag, msgbuf ); fflush(stdout); }
 			else	{
 				if	( XYflag == 1 )
 					{
@@ -365,10 +497,11 @@ while	( cnt >= 16 )
 					// extraction d'un point
 					if	( X_lag < MAX_LAG )
 						{
+						curlag = (int)X_lag;	// pour retour visuel
 						set_point( (int)X_lag, valX, valY );
 						}
 					// affichage textuel dans le GUI
-					snprintf( gui_msg, sizeof(gui_msg), "%u/%u   %g", X_lag, X_period, val );
+					snprintf( gui_msg, sizeof(gui_msg), "%d/%d   %g", X_lag, X_period, val );
 					X_status_show( gui_msg );
 					}
 				else	{
@@ -378,10 +511,11 @@ while	( cnt >= 16 )
 					// extraction d'un point
 					if	( Y_lag < MAX_LAG )
 						{
+						curlag = (int)Y_lag;	// pour retour visuel
 						set_point( (int)Y_lag, valX, valY );
 						}
 					// affichage textuel dans le GUI
-					snprintf( gui_msg, sizeof(gui_msg), "%u/%u   %g", Y_lag, Y_period, val );
+					snprintf( gui_msg, sizeof(gui_msg), "%d/%d   %g", Y_lag, Y_period, val );
 					Y_status_show( gui_msg );
 					}
 
@@ -489,6 +623,7 @@ curbande->bgcolor.set( 1.0, 1.0, 1.0 );
 curbande->Ylabel = "XY";
 curbande->optX = 1;
 curbande->subtk = 10;
+enrich_Y_menu( &panneau2, 0 );
 
 // creer 8 layers
 layer_f_param * curcour2;
@@ -550,7 +685,7 @@ glo->vmain = curwidg;
 curwidg = gtk_vpaned_new ();
 gtk_box_pack_start( GTK_BOX( glo->vmain ), curwidg, TRUE, TRUE, 0 );
 // gtk_container_set_border_width( GTK_CONTAINER( curwidg ), 5 );	// le tour exterieur
-gtk_widget_set_size_request( curwidg, 800, 700 );
+gtk_widget_set_size_request( curwidg, 800, 620 );
 glo->vpans = curwidg;
 
 // creer boite verticale pour panel et sa zoombar
@@ -585,12 +720,14 @@ curwidg = gtk_button_new_with_label ("Run/Pause");
 gtk_signal_connect( GTK_OBJECT(curwidg), "clicked",
                     GTK_SIGNAL_FUNC( run_call ), (gpointer)glo );
 gtk_box_pack_start( GTK_BOX( glo->hbut ), curwidg, TRUE, TRUE, 0 );
+glo->brun = curwidg;
 
 // spin button pour choisir layer XY a enregistrer
 curwidg = gtk_spin_button_new_with_range( 0.0, 7.0, 1.0 );
 g_signal_connect( curwidg, "value-changed",
 		  G_CALLBACK( xy_layer_call ), (gpointer)glo );
 gtk_box_pack_start( GTK_BOX( glo->hbut ), curwidg, FALSE, FALSE, 0 );
+glo->slay = curwidg;
 
 /* simple bouton */
 curwidg = gtk_button_new_with_label ("Restart XY");
@@ -645,15 +782,6 @@ glo->zbar.panneau = &glo->panneau1;
 
 gtk_widget_show_all( glo->wmain );
 
-int portnum = 0;
-if	( argc >= 2 )
-	portnum = atoi(argv[1] );
-
-#define MY_BAUD_RATE 9600
-portnum = nb_open_serial_ro( portnum, MY_BAUD_RATE );
-if	( portnum >=1 )
-	{ printf("ouverture COM%d a %d bauds Ok\n", portnum, MY_BAUD_RATE ); fflush(stdout);  }
-else	gasp("failed open port COM, code %d", portnum );
 
 glo->panneau1.clic_callback_register( clic_call_back1, (void *)glo );
 glo->panneau1.key_callback_register( key_call_back1, (void *)glo );
@@ -669,9 +797,27 @@ glo->panneau1.configure();
 glo->zbar.configure();
 glo->panneau2.configure();
 
-g_timeout_add( 31, (GSourceFunc)(idle_call), (gpointer)glo );
+int portnum = 0;
+if	( argc >= 2 )
+	portnum = atoi(argv[1] );
+
+#define MY_BAUD_RATE 9600
+portnum = nb_open_serial_ro( portnum, MY_BAUD_RATE );
+if	( portnum >=1 )
+	{
+	printf("ouverture COM%d a %d bauds Ok\n", portnum, MY_BAUD_RATE );
+	}
+else	{
+	printf("failed open port COM, code %d\n", portnum );
+	GdkColor rouge = { 0, 0xFF00, 0x0000, 0x0000 };
+	gtk_widget_modify_base( glo->erpX, GTK_STATE_NORMAL, &rouge );
+	gtk_widget_modify_base( glo->erpY, GTK_STATE_NORMAL, &rouge );
+	gtk_entry_set_text( GTK_ENTRY(theglo.erpX), "no COM port" );
+	gtk_entry_set_text( GTK_ENTRY(theglo.erpY), "please quit" );
+	}
 
 fflush(stdout);
+	g_timeout_add( 31, (GSourceFunc)(idle_call), (gpointer)glo );
 
 gtk_main();
 
