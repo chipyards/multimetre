@@ -17,6 +17,11 @@ gpanel panneau1;	// panneau1 dans darea1
 gzoombar zbar;		// sa zoombar
 gpanel panneau2;	// panneau2 dans darea2
 
+// options
+int COMport;		// COM serial port number, 0 ==> automatic
+int option_power;
+double k_power;
+
 // buffer pour lecture port serie
 char rxbuf[64];
 int rxcnt;
@@ -40,7 +45,9 @@ float Ybuf[8][QBUF];
 unsigned int wri;
 int curlag;
 
-unsigned int recording_layer;	// recording XY layer number [0:9] 
+int recording_chan;	// normal       : 8 channels, recording XY layer index = recording_chan
+			// option_power : 4 channels, recording layer pair { recording_chan*2, recording_chan*2+1 }  
+
 int running;		// scroll continu
 double Uspan;		// etendue fenetre scroll continu
 
@@ -54,8 +61,9 @@ double valY;
 
 public:
 // constructeur
-glostru() : fifoWI(0), fifoRI(0), wri(0), curlag(0), recording_layer(0), running(1), Uspan(500.0),
-	    oldtimeX(0), oldtimeY(0), valX(0.0), valY(0.0) {};
+glostru() : COMport(0), option_power(0), k_power(1.0),
+	fifoWI(0), fifoRI(0), wri(0), curlag(0), recording_chan(0), running(1), Uspan(500.0),
+	oldtimeX(0), oldtimeY(0), valX(0.0), valY(0.0) {};
 
 // methodes
 

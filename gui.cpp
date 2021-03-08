@@ -21,6 +21,7 @@ using namespace std;
 #include "layer_f_param.h"
 
 #include "modpop3.h"
+#include "cli_parse.h"
 #include "gui.h"
 #include "nb_serial.h"
 
@@ -62,9 +63,17 @@ if	( glo->running )
 		U0 = U1 - glo->Uspan;
 		glo->panneau1.zoomM( U0, U1 );
 		glo->panneau1.force_repaint = 1;
-				// strip XY
-		layer_f_param * lelay2 = (layer_f_param *)glo->panneau2.bandes[0]->courbes[glo->recording_layer];
+		// strip XY
+		int layer_index = (glo->option_power)?(glo->recording_chan*2):(glo->recording_chan);
+		layer_f_param * lelay2 = (layer_f_param *)glo->panneau2.bandes[0]->courbes[layer_index];
 		lelay2->scan();
+		// scan minimal sur le layer power, juste pour effacer le cadrage par defaut
+		if	( ( glo->option_power ) && ( glo->wri < 3 ) )
+			{
+			layer_index = (glo->recording_chan*2) + 1;
+			lelay2 = (layer_f_param *)glo->panneau2.bandes[0]->courbes[layer_index];
+			lelay2->scan();
+			}
 		glo->panneau2.fullMN(); glo->panneau2.force_repaint = 1;
 		}
 	}
@@ -126,12 +135,27 @@ void clear_call( GtkWidget *widget, glostru * glo )
 glo->clearXY();
 }
 
+// le spin button du recording channel
 void xy_layer_call( GtkWidget *widget, glostru * glo )
 {
-glo->recording_layer = gtk_spin_button_get_value_as_int( GTK_SPIN_BUTTON(widget) );
-printf("recording XY layer set to %d\n", glo->recording_layer ); fflush(stdout);
-if	( glo->recording_layer < glo->panneau2.bandes[0]->courbes.size() )
-	glo->panneau2.bandes[0]->courbes[glo->recording_layer]->visible = 1;
+unsigned int layer_index;
+glo->recording_chan = gtk_spin_button_get_value_as_int( GTK_SPIN_BUTTON(widget) );
+if	( glo->option_power )
+	{
+	layer_index = glo->recording_chan * 2;
+	printf("recording XY layers set to %d and %d (power)\n", layer_index, layer_index+1 ); fflush(stdout);
+	if	( (layer_index+1) < glo->panneau2.bandes[0]->courbes.size() )
+		{
+		glo->panneau2.bandes[0]->courbes[layer_index]->visible = 1;
+		glo->panneau2.bandes[0]->courbes[layer_index+1]->visible = 1;
+		}
+	}
+else	{
+	layer_index = glo->recording_chan;
+	printf("recording XY layer set to %d\n", layer_index ); fflush(stdout);
+	if	( layer_index < glo->panneau2.bandes[0]->courbes.size() )
+		glo->panneau2.bandes[0]->courbes[layer_index]->visible = 1;
+	}
 glo->wri = 0;
 }
 
@@ -262,16 +286,16 @@ switch	( v )
 	case '6' : glo->panneau2.toggle_vis( 0, 6 ); break;
 	case GDK_KEY_KP_7 :
 	case '7' : glo->panneau2.toggle_vis( 0, 7 ); break;
-	// changer le layer pour ecriture
+	// changer le layer pour ecriture N.B. la callback du bouton va se charger de gerer le changement
 	case '>' :
-		if	( glo->recording_layer < 7 )
-			{	// N.B. la callback du bouton va se charger de gerer le changement
-			gtk_spin_button_set_value( GTK_SPIN_BUTTON(glo->slay), glo->recording_layer + 1);
+		if	( glo->recording_chan < ((glo->option_power)?3:7) )
+			{ 
+			gtk_spin_button_set_value( GTK_SPIN_BUTTON(glo->slay), glo->recording_chan + 1);
 			} break;
 	case '<' :
-		if	( glo->recording_layer > 0 )
+		if	( glo->recording_chan > 0 )
 			{
-			gtk_spin_button_set_value( GTK_SPIN_BUTTON(glo->slay), glo->recording_layer - 1);
+			gtk_spin_button_set_value( GTK_SPIN_BUTTON(glo->slay), glo->recording_chan - 1);
 			} break;
 	// restart le layer selectionne en ecriture
 	case 'R' : glo->clearXY(); break;
@@ -534,9 +558,22 @@ return 0;
 
 void glostru::clearXY()
 {
-layer_f_param * lelay2 = (layer_f_param *)panneau2.bandes[0]->courbes[recording_layer];
+int layer_index;
+layer_f_param * lelay;
+if	( option_power )
+	{
+	layer_index = recording_chan * 2;
+	lelay = (layer_f_param *)panneau2.bandes[0]->courbes[layer_index];
+	lelay->qu = 0;
+	lelay = (layer_f_param *)panneau2.bandes[0]->courbes[layer_index+1];
+	lelay->qu = 0;
+	}
+else	{
+	layer_index = recording_chan;
+	lelay = (layer_f_param *)panneau2.bandes[0]->courbes[layer_index];
+	lelay->qu = 0;
+	}
 wri = 0;
-lelay2->qu = 0;
 }
 
 void glostru::set_point( int abs_lag, float Xv, float Yv )
@@ -544,21 +581,44 @@ void glostru::set_point( int abs_lag, float Xv, float Yv )
 printf("wri %4d : lag %4d : %8.3f %8.3f\n", wri, abs_lag, Xv, Yv ); fflush(stdout);
 if	( !running )
 	return;
-
 layer_f_fifo  * lelay0 = (layer_f_fifo  *)panneau1.bandes[0]->courbes[0];
 layer_f_fifo  * lelay1 = (layer_f_fifo  *)panneau1.bandes[0]->courbes[1];
-layer_f_param * lelay2 = (layer_f_param *)panneau2.bandes[0]->courbes[recording_layer];
 
 // action sur le graphe fifo X(t) Y(t)
 lelay0->push(Xv);
 lelay1->push(Yv);
 
 // action sur le graphe Y(X)
-Xbuf[recording_layer][wri&(QBUF-1)] = Xv;
-Ybuf[recording_layer][wri&(QBUF-1)] = Yv; 
-wri++;
-if	( wri <= QBUF )
-	lelay2->qu = wri;
+int layer_index;
+layer_f_param * lelay;
+
+if	( option_power )
+	{
+	layer_index = recording_chan * 2;
+	Xbuf[layer_index][wri&(QBUF-1)] = Xv;
+	Ybuf[layer_index][wri&(QBUF-1)] = Yv;
+	Xbuf[layer_index+1][wri&(QBUF-1)] = Xv;
+	Ybuf[layer_index+1][wri&(QBUF-1)] = Xv * Yv * k_power;
+	wri++;
+	if	( wri <= QBUF )
+		{
+		lelay = (layer_f_param *)panneau2.bandes[0]->courbes[layer_index];
+		lelay->qu = wri;
+		lelay = (layer_f_param *)panneau2.bandes[0]->courbes[layer_index+1];
+		lelay->qu = wri;
+		}
+	}
+else	{
+	layer_index = recording_chan;
+	Xbuf[layer_index][wri&(QBUF-1)] = Xv;
+	Ybuf[layer_index][wri&(QBUF-1)] = Yv;
+	wri++;
+	if	( wri <= QBUF )
+		{
+		lelay = (layer_f_param *)panneau2.bandes[0]->courbes[layer_index];
+		lelay->qu = wri;
+		}
+	}
 }
 
 void glostru::layout()
@@ -639,10 +699,19 @@ for	( int i = 0; i < 8; i++ )
 	curcour2->set_m0( 0.0 );
 	curcour2->set_kn( 1.0 );
 	curcour2->set_n0( 0.0 );
-	snprintf( lab, sizeof(lab), "XY N°%d", i );
+	if	( option_power )
+		{
+		if	( i & 1 )
+			snprintf( lab, sizeof(lab), "X*Y #%d", i/2 );
+		else	snprintf( lab, sizeof(lab), "Y(X) #%d", i/2 );
+		curcour2->visible = ((i/2)?0:1);
+		}
+	else	{
+		snprintf( lab, sizeof(lab), "Y(X) #%d", i );
+		curcour2->visible = (i?0:1);
+		}
 	curcour2->label = string(lab);
 	curcour2->fgcolor.arc_en_ciel( i % 8 );
-	curcour2->visible = (i?0:1);
 
 	// connexion layout - data
 	curcour2 = (layer_f_param *)panneau2.bandes[0]->courbes[i];
@@ -723,7 +792,9 @@ gtk_box_pack_start( GTK_BOX( glo->hbut ), curwidg, TRUE, TRUE, 0 );
 glo->brun = curwidg;
 
 // spin button pour choisir layer XY a enregistrer
-curwidg = gtk_spin_button_new_with_range( 0.0, 7.0, 1.0 );
+if	( glo->option_power )
+	curwidg = gtk_spin_button_new_with_range( 0.0, 3.0, 1.0 );
+else	curwidg = gtk_spin_button_new_with_range( 0.0, 7.0, 1.0 );
 g_signal_connect( curwidg, "value-changed",
 		  G_CALLBACK( xy_layer_call ), (gpointer)glo );
 gtk_box_pack_start( GTK_BOX( glo->hbut ), curwidg, FALSE, FALSE, 0 );
@@ -783,6 +854,18 @@ glo->zbar.panneau = &glo->panneau1;
 gtk_widget_show_all( glo->wmain );
 
 
+// 	parsage CLI
+cli_parse * lepar = new cli_parse( argc, (const char **)argv, "pw" );
+// le parsage est fait, on recupere les args !
+const char * val;
+if	( ( val = lepar->get( 'p' ) ) )	glo->COMport = atoi( val );
+if	( ( val = lepar->get( 'w' ) ) )
+	{
+	glo->option_power = 1;
+	glo->k_power = strtod( val, NULL );
+	printf("option power : k = %g\n", glo->k_power ); fflush(stdout);
+	}
+
 glo->panneau1.clic_callback_register( clic_call_back1, (void *)glo );
 glo->panneau1.key_callback_register( key_call_back1, (void *)glo );
 glo->panneau2.key_callback_register( key_call_back2, (void *)glo );
@@ -797,18 +880,14 @@ glo->panneau1.configure();
 glo->zbar.configure();
 glo->panneau2.configure();
 
-int portnum = 0;
-if	( argc >= 2 )
-	portnum = atoi(argv[1] );
-
 #define MY_BAUD_RATE 9600
-portnum = nb_open_serial_ro( portnum, MY_BAUD_RATE );
-if	( portnum >=1 )
+glo->COMport = nb_open_serial_ro( glo->COMport, MY_BAUD_RATE );
+if	( glo->COMport >=1 )
 	{
-	printf("ouverture COM%d a %d bauds Ok\n", portnum, MY_BAUD_RATE );
+	printf("ouverture COM%d a %d bauds Ok\n", glo->COMport, MY_BAUD_RATE );
 	}
 else	{
-	printf("failed open port COM, code %d\n", portnum );
+	printf("failed open port COM, code %d\n", glo->COMport );
 	GdkColor rouge = { 0, 0xFF00, 0x0000, 0x0000 };
 	gtk_widget_modify_base( glo->erpX, GTK_STATE_NORMAL, &rouge );
 	gtk_widget_modify_base( glo->erpY, GTK_STATE_NORMAL, &rouge );
