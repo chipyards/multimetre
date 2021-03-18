@@ -254,12 +254,10 @@ switch	( v )
 		break;
 	// PDF
 	case 'p' :
-		char fnam[32], capt[128];
-		snprintf( fnam, sizeof(fnam), "aimtti1.pdf" );
-		modpop_entry( "PDF plot", "nom du fichier", fnam, sizeof(fnam), GTK_WINDOW(glo->wmain) );
-		snprintf( capt, sizeof(capt), "plot FIFO" );
-		modpop_entry( "PDF plot", "description", capt, sizeof(capt), GTK_WINDOW(glo->wmain) );
-		glo->panneau1.pdfplot( fnam, capt );
+		modpop_entry( "PDF plot", "---- nom du fichier ----", glo->plot_fnam, sizeof(glo->plot_fnam), GTK_WINDOW(glo->wmain) );
+		modpop_entry( "PDF plot", "--------------------------- description --------------------------",
+				glo->plot_desc, sizeof(glo->plot_desc), GTK_WINDOW(glo->wmain) );
+		glo->panneau1.pdfplot( glo->plot_fnam, glo->plot_desc );
 		break;
 	default : key_call_back_common( v, vglo );
 	}
@@ -299,14 +297,14 @@ switch	( v )
 			} break;
 	// restart le layer selectionne en ecriture
 	case 'R' : glo->clearXY(); break;
+	// restart tous les layers
+	case 'A' : glo->clearXYall(); break;
 	// PDF
 	case 'p' :
-		char fnam[32], capt[128];
-		snprintf( fnam, sizeof(fnam), "aimtti2.pdf" );
-		modpop_entry( "PDF plot", "nom du fichier", fnam, sizeof(fnam), GTK_WINDOW(glo->wmain) );
-		snprintf( capt, sizeof(capt), "plot XY" );
-		modpop_entry( "PDF plot", "description", capt, sizeof(capt), GTK_WINDOW(glo->wmain) );
-		glo->panneau2.pdfplot( fnam, capt );
+		modpop_entry( "PDF plot", "---- nom du fichier ----", glo->plot_fnam, sizeof(glo->plot_fnam), GTK_WINDOW(glo->wmain) );
+		modpop_entry( "PDF plot", "--------------------------- description --------------------------",
+				glo->plot_desc, sizeof(glo->plot_desc), GTK_WINDOW(glo->wmain) );
+		glo->panneau2.pdfplot( glo->plot_fnam, glo->plot_desc );
 		break;
 	default : key_call_back_common( v, vglo );
 	}
@@ -484,7 +482,12 @@ while	( cnt >= 16 )
 		{
 		c = fifobuf[ (fifoRI+(i++)) & FIFOMASK ];
 		if	( ( c == 'X' ) || ( c == 'Y' ) )
+			{
 			XYflag = 1 + c - 'X';
+			if	( option_swap )
+				XYflag ^= 3;	// permuter 1 et 2
+			}
+		// ici on a XYflag = 0 (invalid), 1 (X) ou 2 (Y)
 		if	( XYflag )
 			{
 			msgbuf[j++] = c;
@@ -575,6 +578,21 @@ else	{
 	}
 wri = 0;
 }
+
+void glostru::clearXYall()
+{
+int layer_index;
+layer_f_param * lelay;
+for	( layer_index = 0; layer_index < 8; layer_index++ )
+	{
+	lelay = (layer_f_param *)panneau2.bandes[0]->courbes[layer_index];
+	lelay->qu = 0;
+	lelay->visible = ( ( layer_index == 0 ) || ( ( layer_index == 1 ) && ( option_power ) ) )?1:0;
+	}
+recording_chan = 0;
+wri = 0;
+}
+
 
 void glostru::set_point( int abs_lag, float Xv, float Yv )
 {
@@ -863,9 +881,15 @@ if	( ( val = lepar->get( 'w' ) ) )
 	{
 	glo->option_power = 1;
 	glo->k_power = strtod( val, NULL );
+	if	( glo->k_power == 0.0 )
+		glo->k_power = 1.0;
 	printf("option power : k = %g\n", glo->k_power ); fflush(stdout);
 	}
-
+if	( lepar->get( 's' ) )
+	{
+	glo->option_swap = 1;	
+	printf("option swap : permutation of X & Y\n" ); fflush(stdout);
+	}
 glo->panneau1.clic_callback_register( clic_call_back1, (void *)glo );
 glo->panneau1.key_callback_register( key_call_back1, (void *)glo );
 glo->panneau2.key_callback_register( key_call_back2, (void *)glo );

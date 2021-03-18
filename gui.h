@@ -21,6 +21,7 @@ gpanel panneau2;	// panneau2 dans darea2
 int COMport;		// COM serial port number, 0 ==> automatic
 int option_power;
 double k_power;
+int option_swap;
 
 // buffer pour lecture port serie
 char rxbuf[64];
@@ -51,6 +52,9 @@ int recording_chan;	// normal       : 8 channels, recording XY layer index = rec
 int running;		// scroll continu
 double Uspan;		// etendue fenetre scroll continu
 
+char plot_fnam[128];
+char plot_desc[128];
+
 #define MAX_LAG		38
 private:
 // timestamps et valeurs precedents
@@ -61,14 +65,18 @@ double valY;
 
 public:
 // constructeur
-glostru() : COMport(0), option_power(0), k_power(1.0),
+glostru() : COMport(0), option_power(0), k_power(1.0), option_swap(0),
 	fifoWI(0), fifoRI(0), wri(0), curlag(0), recording_chan(0), running(1), Uspan(500.0),
-	oldtimeX(0), oldtimeY(0), valX(0.0), valY(0.0) {};
+	oldtimeX(0), oldtimeY(0), valX(0.0), valY(0.0) {
+	snprintf( plot_fnam, sizeof(plot_fnam), "aimtti1.pdf" );
+	snprintf( plot_desc, sizeof(plot_desc), "?" );
+	};
 
 // methodes
 
 int step();	// fontion appelee periodiquement
 void clearXY();
+void clearXYall();
 void set_point( int abs_lag, float Xv, float Yv );
 void layout();
 
