@@ -146,15 +146,15 @@ if	( glo->option_power )
 	printf("recording XY layers set to %d and %d (power)\n", layer_index, layer_index+1 ); fflush(stdout);
 	if	( (layer_index+1) < glo->panneau2.bandes[0]->courbes.size() )
 		{
-		glo->panneau2.bandes[0]->courbes[layer_index]->visible = 1;
-		glo->panneau2.bandes[0]->courbes[layer_index+1]->visible = 1;
+		glo->panneau2.set_layer_vis( 0, layer_index, 1 );
+		glo->panneau2.set_layer_vis( 0, layer_index+1, 1 );
 		}
 	}
 else	{
 	layer_index = glo->recording_chan;
 	printf("recording XY layer set to %d\n", layer_index ); fflush(stdout);
 	if	( layer_index < glo->panneau2.bandes[0]->courbes.size() )
-		glo->panneau2.bandes[0]->courbes[layer_index]->visible = 1;
+		glo->panneau2.set_layer_vis( 0, layer_index, 1 );
 	}
 glo->wri = 0;
 }
@@ -587,7 +587,9 @@ for	( layer_index = 0; layer_index < 8; layer_index++ )
 	{
 	lelay = (layer_f_param *)panneau2.bandes[0]->courbes[layer_index];
 	lelay->qu = 0;
-	lelay->visible = ( ( layer_index == 0 ) || ( ( layer_index == 1 ) && ( option_power ) ) )?1:0;
+	gtk_spin_button_set_value( GTK_SPIN_BUTTON(slay), 0.0 ); 
+	panneau2.set_layer_vis( 0, layer_index,
+		( ( layer_index == 0 ) || ( ( layer_index == 1 ) && ( option_power ) ) )?1:0 );
 	}
 recording_chan = 0;
 wri = 0;
@@ -721,11 +723,11 @@ for	( int i = 0; i < 8; i++ )
 	if	( option_power )
 		{
 		if	(i/2)
-			panneau2.toggle_vis( 0, i );
+			panneau2.set_layer_vis( 0, i, 0 );
 		}
 	else	{
 		if	(i)
-			panneau2.toggle_vis( 0, i );
+			panneau2.set_layer_vis( 0, i, 0 );
 		}
 
 	// configurer le layer
