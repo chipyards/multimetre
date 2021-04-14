@@ -27,9 +27,9 @@ Implementation :
 	  drawab ( drawab == NULL ==> B2 ) - normalement pas d'impact sur le resultat visuel
 
 Callback :
-	- l'application peut enregistrere 2 callbacks :
+	- l'application peut enregistrer 2 callbacks :
 		- clic_call_back : pour interpreter les clics sur le panel
-		  N.B. sont deja interceptes ppour zoom et pan : wheel, right drag, left drag + spacebar
+		  N.B. sont deja interceptes pour zoom et pan : wheel, right drag, left drag + spacebar
 		- key_call_back : pour les actions clavier
 		  N.B. 'f' est deja interceptee pour full zoom XY
 
@@ -75,10 +75,59 @@ paint "queue" :
 		- un event a mis force_repaint a 1
 	N.B. pour mettre a jour seulement le curseur, appeler paint() avec force_repaint = 0
 PDF plot :
+	document PDF entierement cree par jluplot.
 	gpanel::pdf_modal_layout offre un dialogue incluant GTK file chooser,
-	si on n'aime pas, appeler panel::pdfplot() de jluplot  
-
+	si on n'aime pas, appeler directement panel::pdfplot() de jluplot  
+Cycle de vie du gpanel :
+	- creation du gpanel, statique ou dynamique, encombrement insignifiant
+	  son constructeur initialise les variables scalaires
+	- l'application cree une GtkDrawingArea, lui donne des dimensions mini (directement ou non)
+	- gpanel::events_connect( GtkDrawingArea * aire ) connecte 9 callbacks aux events de ce widget,
+	  et prepare quelques menus (cela ne peut pas etre fait par le constructeur gpanel() car GTK doit etre demarre)
+		- on reconnait que cette operation a ete faite au fait que this->larea est non NULL
+		- les callbacks peuvent etre appelees lors d'une etape ulterieure de la construction du GUI,
+		  ce qui implique les risque suivants :
+			- gpanel_configure() peut etre appele avant que le layout (les strips) soit cree par l'appli
+			  ==> les strips ne sont pas dimensionnes correctement
+			  ==> gpanel::paint() appelle automatiquement gpanel::configure() (via init_flags)
+			  (il n'y a pas d'inconvenient a faire des appels redondants de cette fonction)
+			- gpanel_configure() peut etre appele par GTK avant que la fenetre GDK gpanel::larea->window
+			  soit creee (c'est un BUG, mais il faut vivre avec)
+			  ==> gpanel::configure() retourne sans rien faire pour eviter incident fatal
+			- gpanel::paint() peut etre appele par l'appli avant que la fenetre GDK gpanel::larea->window
+			  soit creee ==> solution similaire evite incident fatal
+	- l'application cree le layout c'est a dire les strips et les layers
+	- la boucle principale va appeler gpanel::paint() chaque fois qu'un event expose a ete vu, ou qu'un event
+	  interne le demande (via force_repaint)
+	  (il n'y a pas trop d'inconvenient a faire des appels redondants de gpanel::paint() )
+	- GTK va appeler gpanel_configure() chaque fois que les dimensions de la drawing area changent
+	  ==> appel de panel::resize() pour redimensionner le contenu
+	- des evenements internes peuvent aussi appeler panel::resize()
+Flags d'initialisation :
+	- jluplot : full_valid automatise le fullMN() initial necessaire pour que les transformations marchent
+	- gluplot : init_flags automatise l'appel initial de gpanel::configure()
+Contraintes de sequencement :
+	- gpanel::events_connect() doit etre appele AVANT gtk_widget_show_all() :
+		en effet on ne peut pas connecter d'event callback a un widget qui est "realized"
+		(on suppose que "realized" veut dire dont tous les ancetres sont "shown")
+	- depuis qu'on a deplace 'laregion = gdk_drawable_get_clip_region()' de gpanel::configure() vers
+	  gpanel::paint() (ce qui semble redondant), le layout (creation des strips et layers) peut etre fait
+	  AVANT ou APRES gtk_widget_show_all().
+	  Le layout n'a d'interaction avec la region que au travers de son influence sur configure() via bandes.size().
+	- si la drawing area est dans un tab cache d'un GtkNotebook, la fenetre GDK gpanel::larea->window
+	  n'est pas creee, c'est supporte par gpanel_configure() et gpanel::paint().
 */
+
+// trouver l'index d'un element dans un vecteur (a condition que les elements supportent l'operateur == )
+// en pratique c'est pour utiliser avec un vecteur de pointeurs
+template <typename vectype> int vectindex( vector<vectype> * v, vectype elem )
+{
+for	( unsigned int i = 0; i < v->size(); ++i )
+	if	( v->at(i) == elem )
+		return i;
+return -1;
+}
+
 
 // ghost_drag : un rectangle fantome dragable pour selection ou zoom relatif
 #define MIN_DRAG 5	// limite entre clic et drag en pixels
@@ -106,12 +155,14 @@ public :
 GtkWidget * smenu_y;    // scale menu : menu contextuel pour les echelles Y
 // constructeur
 gstrip() : smenu_y(NULL) {};
+
+void add_layer( layer_base * lacourbe, const char * lelabel );
 };
 
 // gpanel derive du panel de jluplot
 class gpanel : public panel {
 public :
-GtkWidget * widget;
+GtkWidget * larea;	// mis a jour par gpanel::events_connect()
 GdkRegion * laregion;	// pour gestion double-buffer a la demande
 GdkPixmap * drawpad;	// offscreen drawable N.B. pas la peine de stocker ses dimensions on peut lui demander
 cairo_t * offcai;	// le cairo persistant pour le drawpad
@@ -120,34 +171,38 @@ GdkWindow * drawab;	// GDK drawable de la drawing area contenant le panel
 GdkGC * gc;		// GDK drawing context
 // widgets associes
 GtkWidget * smenu_x;    // scale menu : menu contextuel pour les echelles X
+GtkWidget * gmenu;	// global menu : menu contextuel principal
 ghost_drag drag;
 // flags et indicateurs
+int init_flags;		// pour gerer le sequencement des actions de demarrage
 int offscreen_flag;	// autorise utilisation du buffer offscreen aka drawpad
 int force_repaint;	// zero pour dessin cumulatif en single-buffer
 double xcursor;		// position demandee pour le curseur tempporel, abcisse en pixels
 double xdirty;		// region polluee par le curseur temporel, abcisse en pixels
-int paint_cnt;		// profilage
 // variables
 void (*clic_call_back)(double,double,void*);	// pointeur callback pour clic sur courbe
 void (*key_call_back)(int,void*);		// pointeur callback pour touche clavier
 void * call_back_data;			// pointeur a passer aux callbacks
+int selected_strip;	// strip duquel on a appele le menu (flags de marges inclus)
+int selected_key;	// touche couramment pressee
 
-// constructeur (N.B. l'initialisation est obligatoirmeent completee par la methode layout() )
-gpanel() : laregion(NULL), drawpad(NULL), offcai(NULL), drawab(NULL), gc(NULL),
-	   offscreen_flag(1), force_repaint(1), xcursor(-1.0), xdirty(-1.0),
-	   paint_cnt(0), clic_call_back(NULL), key_call_back(NULL) {};
+// constructeur
+gpanel() : larea(NULL), laregion(NULL), drawpad(NULL), offcai(NULL), drawab(NULL), gc(NULL),
+	smenu_x( NULL ), gmenu(NULL),	
+	init_flags(0), offscreen_flag(1), force_repaint(1), xcursor(-1.0), xdirty(-1.0),
+	clic_call_back(NULL), key_call_back(NULL), selected_strip(0), selected_key(0)	
+	{};
 
 // methodes
-GtkWidget * layout( int w, int h );
-
+void events_connect( GtkDrawingArea * aire );
 void add_strip( gstrip * labande ) {
 	panel::add_strip( labande );
 	labande->smenu_y = mksmenu("Y AXIS");
 	}
-
 void configure();
 void expose();
 void toggle_vis( unsigned int ib, int ic );
+void copy_gmenu2visi();		// copie les checkboxes du menu contextuel vers les flags 'visible' 
 void paint();			// copie automatique du drawpad sur la drawing area
 void draw();			// dessin vectoriel automatique sur le drawpad
 void drawpad_resize();		// automatique, alloue ou re-alloue le pad, cree le cairo
@@ -167,13 +222,10 @@ GtkWidget * edesc;
 // pdf service methods
 void pdf_modal_layout( GtkWidget * mainwindow );
 void pdf_ok_call();
-// scale menu service
+// contex menu service
 GtkWidget * mksmenu( const char * title );
+GtkWidget * mkgmenu();
 static void smenu_set_title( GtkWidget * lemenu, const char *titre );
-int selected_strip;	// strip duquel on a appele le menu (flags de marges inclus)
-// bindkey service
-int selected_key;	// touche couramment pressee
-// callback service
 void clic_callback_register( void (*fon)(double,double,void*), void * data );
 void key_callback_register( void (*fon)(int,void*), void * data );
 // dev utility
@@ -186,7 +238,7 @@ void dump() {
 // la zoombar, en version horizontale
 class gzoombar {
 public :
-GtkWidget * widget;
+GtkWidget * larea;
 gpanel * panneau;
 int ww;	// largeur drawing area
 double ndx;	// largeur nette
@@ -205,7 +257,7 @@ gzoombar() : panneau(NULL), ww(640), xm(12), dxmin(3), xlong(36), opcode(0) {
 	ndx = (double)ww - ( 2.0 * xm );
 	};
 // methodes
-GtkWidget * layout( int w );
+void events_connect( GtkDrawingArea * aire );
 void configure();
 void expose();
 void clic( GdkEventButton * event );

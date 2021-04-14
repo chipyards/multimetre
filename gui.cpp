@@ -662,26 +662,24 @@ curbande->subtk = 1;
 // creer un layer
 layer_f_fifo * curcour;
 curcour = new layer_f_fifo(12);
-curbande->add_layer( curcour );
+curbande->add_layer( curcour, "ValX" );
 
 // configurer le layer
 curcour->set_km( 1.0 );
 curcour->set_m0( 0.0 );
 curcour->set_kn( 1.0 );
 curcour->set_n0( 0.0 );
-curcour->label = string("ValX");
 curcour->fgcolor.set( 0.75, 0.0, 0.0 );
 
 // creer un layer
 curcour = new layer_f_fifo(12);
-curbande->add_layer( curcour );
+curbande->add_layer( curcour, "ValY" );
 
 // configurer le layer
 curcour->set_km( 1.0 );
 curcour->set_m0( 0.0 );
 curcour->set_kn( 1.0 );
 curcour->set_n0( 0.0 );
-curcour->label = string("ValY");
 curcour->fgcolor.set( 0.0, 0.0, 0.8 );
 
 // connexion layout - data
@@ -710,25 +708,31 @@ for	( int i = 0; i < 8; i++ )
 	{
 	// creer un layer
 	curcour2 = new layer_f_param;
-	curbande->add_layer( curcour2 );
+	if	( option_power )
+		{
+		if	( i & 1 )
+			snprintf( lab, sizeof(lab), "Pwr #%d", i/2 );
+		else	snprintf( lab, sizeof(lab), "Y(X) #%d", i/2 );
+		}
+	else	{
+		snprintf( lab, sizeof(lab), "Y(X) #%d", i );
+		}
+	curbande->add_layer( curcour2, lab );
+	if	( option_power )
+		{
+		if	(i/2)
+			panneau2.toggle_vis( 0, i );
+		}
+	else	{
+		if	(i)
+			panneau2.toggle_vis( 0, i );
+		}
 
 	// configurer le layer
 	curcour2->set_km( 1.0 );
 	curcour2->set_m0( 0.0 );
 	curcour2->set_kn( 1.0 );
 	curcour2->set_n0( 0.0 );
-	if	( option_power )
-		{
-		if	( i & 1 )
-			snprintf( lab, sizeof(lab), "X*Y #%d", i/2 );
-		else	snprintf( lab, sizeof(lab), "Y(X) #%d", i/2 );
-		curcour2->visible = ((i/2)?0:1);
-		}
-	else	{
-		snprintf( lab, sizeof(lab), "Y(X) #%d", i );
-		curcour2->visible = (i?0:1);
-		}
-	curcour2->label = string(lab);
 	curcour2->fgcolor.arc_en_ciel( i % 8 );
 
 	// connexion layout - data
@@ -780,19 +784,25 @@ curwidg = gtk_vbox_new( FALSE, 0 ); /* spacing ENTRE objets */
 gtk_paned_pack1( GTK_PANED(glo->vpans), curwidg, TRUE, FALSE ); // resizable, not shrinkable
 glo->vpan1 = curwidg;
 
+
 /* creer une drawing area resizable depuis la fenetre */
-curwidg = glo->panneau1.layout( 800, 80 );	// hauteur mini, la hauteur initiale fixee par parent
+curwidg = gtk_drawing_area_new();
+gtk_widget_set_size_request( curwidg, 800, 80 );	// hauteur mini, la hauteur initiale fixee par parent
+glo->panneau1.events_connect( GTK_DRAWING_AREA( curwidg ) );
 gtk_box_pack_start( GTK_BOX( glo->vpan1 ), curwidg, TRUE, TRUE, 0 );
 glo->darea1 = curwidg;
 
 /* creer une drawing area  qui ne sera pas resizee en hauteur par la hbox
    mais quand meme en largeur (par chance !!!) */
-curwidg = glo->zbar.layout( 800 );
+curwidg = gtk_drawing_area_new();
+glo->zbar.events_connect( GTK_DRAWING_AREA( curwidg ) );
 gtk_box_pack_start( GTK_BOX( glo->vpan1 ), curwidg, FALSE, FALSE, 0 );
 glo->zarea1 = curwidg;
 
 /* creer une drawing area resizable depuis la fenetre */
-curwidg = glo->panneau2.layout( 800, 80 );	// hauteur mini, la hauteur initiale fixee par parent
+curwidg = gtk_drawing_area_new();
+gtk_widget_set_size_request( curwidg, 800, 80 );	// hauteur mini, la hauteur initiale fixee par parent
+glo->panneau2.events_connect( GTK_DRAWING_AREA( curwidg ) );
 gtk_paned_pack2( GTK_PANED(glo->vpans), curwidg, TRUE, FALSE ); // resizable, not shrinkable
 glo->darea2 = curwidg;
 
