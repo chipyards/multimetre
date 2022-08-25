@@ -66,13 +66,50 @@ Liaison serie du multimetre AIMTTi 1604
 
 3. Projet ---------------------------------------------
 
-Un STM32F103 va faire passerelle entre les deux 1604 et le PC
+Un STM32F103 fait passerelle entre les deux 1604 et le PC
 - UART2 vers PC via CDC
 - UART1 et UART3 vers les deux 1604
-  Ces 2 UARTs sont FT ce qui va permettre d'augmenter les marges opérationnelles des optos
+  Ces 2 UARTs sont FT (5-volt tolerant) ce qui va permettre d'augmenter les marges opérationnelles des optos
 
 framework :
 STM32 : F103_keil_ats, 3 UARTs avec interrupt et fifo
 	https://github.com/chipyards/F1_keil_ats/tree/aimtti_1604
 PC : GTK : jluplot + serial
 	https://github.com/chipyards/multimetre.git
+
+=============================== User Guide pour l'appli GTK ========================================
+
+CLI :
+	-p <COM port>	# rarement necessaire
+	-w <power k>	# activation des courbes de puissance, avec facteur d'echelle (off par defaut)
+	-s		# permutation des voies X et Y, sachant que le 2eme panel trace Y(X) (typiquement I(V))
+			# par defaut X (typiquement V) est le multimetre 1 et Y (typiquement I) le multimetre 2
+
+Bindkeys :
+
+communes aux 2 panels :
+	g		// multimetres on/off (utile pour resynchronisation)
+	u		// multimetres connect ==> ils emettent les valeurs periodiquement
+	v		// multimetres disconnect (utile pour resynchronisation)
+	c		// auto range on/off
+	SP		// run start/stop
+
+pour panel 0 (top) :
+	0-1		// visi des courbes
+	z, Z		// zoom X pendant le run
+	o, n, t		// tests jluplot
+	p		// pdf plot
+
+pour panel 1 (bot) :
+	0-7		// visi des courbes
+	< >		// changer de layer selectionne en ecriture
+	R		// restart le layer selectionne en ecriture
+	A		// restart tous les layers
+	p		// pdf plot
+
+Note sur les echelles :
+- menu Y permet de choisir (avant ou apres capture) l'echelle pour Y, par exemple courant
+  (typiquement X10 pour shunt 0.1) 
+- on peut utiliser -w <k> pour cadrer la courbe de puissance pour qu'elle soit superposable,
+  mais alors son echelle n'est pas affichee, l'utilisateur devra deviner
+
